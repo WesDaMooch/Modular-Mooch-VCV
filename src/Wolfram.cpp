@@ -13,35 +13,38 @@
 // PTSBNPBISPPPWGOXKRPEAESROYZLFSAAALOQZLBKSGKMEX
 
 
-// Future version updates:
+// PLANNED UPDATES:
 //
-// TODO: add headers
-// TODO: figure out if the EngineToUiLayer is the best way to do share data
+// TODO: figure out if the EngineToUiLayer is the best way to do share data.
 //
 // V1.1:
 // - Replace Slew menu page with FX page.
 // here an effect can be selected that is applied to the output,
 // the amount of effect that is applied is contolled by the Scale params.
 // Effects:
-// GAIN - (0 - 10Vpp)
-// RISE - Slew rise
-// FALL - Slew fall
-// FOLD - Wavefolding
-// - V1.1 manual inculed Effects section. 
+// GAIN - (0 - 10Vpp).
+// RISE - Slew rise (left = exponencial, right = linear).
+// FALL - Slew fall.
+// FOLD - Wavefolding (left = minus, right = plus)?
+// - V1.1 Manual inculed Effects section. 
 //
 // V1.2:
 // - onRandomize.
 // - New Effects: 
-// XMOD - some cross modulation with the other output...
+// XMOD - some cross modulation with the other output (left = ?, right = ?).
 //
 // V2:
 // - Polyphonic engines, multiple outputs
 // or an expander which opens up all Algos at once. 
+//
+// New algos!
+// A true Oscillator Mode could use the algos to generate wavetables.
+
 
 #include <string>
 #include <atomic>
 #include "Wolfram/ui.hpp"
-#include "Wolfram/baseEngine.hpp"
+#include "Wolfram/algoEngine.hpp"
 #include "Wolfram/wolfEngine.hpp"
 #include "Wolfram/lifeEngine.hpp"
 
@@ -63,7 +66,7 @@ public:
 	}
 
 	float process(float x) {
-		// TODO: could pass ref x
+		// TODO: Could pass x as reference.
 		y += rack::clamp(x - y, -slew, slew);
 		return y;
 	}
@@ -96,9 +99,9 @@ struct Wolfram : Module {
 		INPUTS_LEN
 	};
 	enum OutputId {
-		X_CV_OUTPUT,
+		X_OUTPUT,
 		X_PULSE_OUTPUT,
-		Y_CV_OUTPUT,
+		Y_OUTPUT,
 		Y_PULSE_OUTPUT,
 		OUTPUTS_LEN
 	};
@@ -108,8 +111,6 @@ struct Wolfram : Module {
 		X_PULSE_LIGHT,
 		Y_CV_LIGHT,
 		Y_PULSE_LIGHT,
-		TRIG_LIGHT,
-		INJECT_LIGHT,
 		LIGHTS_LEN
 	};
 
@@ -159,7 +160,7 @@ struct Wolfram : Module {
 	// Engine
 	WolfEngine wolfEngine;
 	LifeEngine lifeEngine;
-	std::array<BaseEngine*, NUM_ENGINES> engine{};
+	std::array<AlgoEngine*, NUM_ENGINES> engine{};
 	std::array<EngineCoreParams, NUM_ENGINES> engineCoreParams{};
 	std::array<EngineMenuParams, NUM_ENGINES> engineMenuParams{};
 	static constexpr int engineDefault = 0;
@@ -190,7 +191,7 @@ struct Wolfram : Module {
 	size_t sequenceLength = 8;
 	int slewValue = 0;
 	bool sync = false;
-	bool oscMode = false;
+	bool audioRateMode = false;
 	bool ruleModulation = false;
 	bool engineModulation = false;
 	float prevStepVoltage = 0.f;
@@ -226,27 +227,26 @@ struct Wolfram : Module {
 		configInput(OFFSET_CV_INPUT, "Offset CV");
 		configInput(TRIG_INPUT, "Trigger");
 		configInput(INJECT_INPUT, "Inject");
-		configOutput(X_CV_OUTPUT, "X CV");
+		configOutput(X_OUTPUT, "X");
 		configOutput(X_PULSE_OUTPUT, "X Pulse");
-		configOutput(Y_CV_OUTPUT, "Y CV");
+		configOutput(Y_OUTPUT, "Y");
 		configOutput(Y_PULSE_OUTPUT, "Y Pulse");
 		configLight(MODE_LIGHT, "Mode");
 		configLight(X_CV_LIGHT, "X CV");
 		configLight(X_PULSE_LIGHT, "X Pulse");
 		configLight(Y_CV_LIGHT, "Y CV");
 		configLight(Y_PULSE_LIGHT, "Y Pulse");
-		configLight(TRIG_LIGHT, "Trigger");
-		configLight(INJECT_LIGHT, "Inject");
-		onSampleRateChange();
 
-		// Engines
+		// Load engines
 		engine[0] = &wolfEngine;
 		engine[1] = &lifeEngine;
+
+		onSampleRateChange();
 	}
 
 	bool checkEngineIsNull(int index) {
 		if (engine[index] == nullptr) {
-			DEBUG("error: %d : NULL ENGINE", errno);
+			DEBUG("error: engine[%d] is NULL (ptr=%p)", index, (void*)engine[index]);
 			return true;
 		}
 		return false;
@@ -289,10 +289,10 @@ struct Wolfram : Module {
 
 	void setSlew(int newSlewSelect) {
 		// Skew slewParam (0 - 100%) -> (0 - 1)
-		// Convert to ms, if Oscillator Mode (0 - 10ms) else (0 - 1000ms)
+		// Convert to ms, if Audio Rate Mode (0 - 10ms) else (0 - 1000ms)
 		slewValue = rack::clamp(newSlewSelect, 0, 100);
 		float slewSkew = std::pow(slewValue * 0.01f, 2.f);
-		float slew = oscMode ? (slewSkew * 10.f) : (slewSkew * 1000.f);
+		float slew = audioRateMode ? (slewSkew * 10.f) : (slewSkew * 1000.f);
 
 		for (int i = 0; i < 2; i++)
 			slewLimiter[i].setSlewAmountMs(slew, srate);
@@ -316,7 +316,7 @@ struct Wolfram : Module {
 		Module::onReset(e);
 
 		sync = false;
-		oscMode = false;
+		audioRateMode = false;
 		menuActive = false;
 		miniMenuActive = false;
 		pageCounter = 0; 
@@ -336,10 +336,12 @@ struct Wolfram : Module {
 	json_t* dataToJson() override {
 		// Engine buffers & display use uint64_t, yet the patch json uses 'int'.
 		// There seems to be no issue at the moment with this conflict.
+		// TODO: Could the 64-bit buffer int by encoded as a string?
+
 		json_t* rootJ = json_object();
 
 		// Save sequencer settings
-		json_object_set_new(rootJ, "oscMode", json_boolean(oscMode));
+		json_object_set_new(rootJ, "audioRateMode", json_boolean(audioRateMode));
 		json_object_set_new(rootJ, "sync", json_boolean(sync));
 		json_object_set_new(rootJ, "slewValue", json_integer(slewValue));
 
@@ -392,9 +394,9 @@ struct Wolfram : Module {
 		if (syncJ)
 			sync = json_boolean_value(syncJ);
 
-		json_t* oscModeJ = json_object_get(rootJ, "oscMode");
-		if (oscModeJ)
-			oscMode = json_boolean_value(oscModeJ);
+		json_t* audioRateModeJ = json_object_get(rootJ, "audioRateMode");
+		if (audioRateModeJ)
+			audioRateMode = json_boolean_value(audioRateModeJ);
 
 		json_t* slewValueJ = json_object_get(rootJ, "slewValue");
 		if (slewValueJ)
@@ -483,8 +485,8 @@ struct Wolfram : Module {
 	void process(const ProcessArgs& args) override {
 		for (int i = 0; i < NUM_ENGINES; i++) {
 			if (checkEngineIsNull(i)) {
-				outputs[X_CV_OUTPUT].setVoltage(0.f);
-				outputs[Y_CV_OUTPUT].setVoltage(0.f);
+				outputs[X_OUTPUT].setVoltage(0.f);
+				outputs[Y_OUTPUT].setVoltage(0.f);
 				outputs[X_PULSE_OUTPUT].setVoltage(0.f);
 				outputs[Y_PULSE_OUTPUT].setVoltage(0.f);
 				lights[MODE_LIGHT].setBrightness(0.f);
@@ -492,8 +494,6 @@ struct Wolfram : Module {
 				lights[Y_CV_LIGHT].setBrightness(0.f);
 				lights[X_PULSE_LIGHT].setBrightness(0.f);
 				lights[Y_PULSE_LIGHT].setBrightness(0.f);
-				lights[TRIG_LIGHT].setBrightness(0.f);
-				lights[INJECT_LIGHT].setBrightness(0.f);
 				return;
 			}
 		}
@@ -509,7 +509,7 @@ struct Wolfram : Module {
 		// Step
 		bool step = false;
 		float stepVoltage = inputs[TRIG_INPUT].getVoltage();
-		if (oscMode)// Zero crossing
+		if (audioRateMode)// Zero crossing
 			step = (stepVoltage > 0.f && prevStepVoltage <= 0.f) || (stepVoltage < 0.f && prevStepVoltage >= 0.f);
 		else		// Pulse trigger	
 			step = trigTrigger.process(inputs[TRIG_INPUT].getVoltage(), 0.1f, 2.f);
@@ -615,7 +615,7 @@ struct Wolfram : Module {
 			injectState = -1;
 		engineCoreParams[engineIndex].inject = injectState;
 		
-		// OUTPUT
+		// OUTPUTS
 		float xCv = 0.f; 
 		float yCv = 0.f;
 		bool xBit = false;
@@ -637,20 +637,20 @@ struct Wolfram : Module {
 		xAudio = dcFilter[0].highpass();
 		yAudio = dcFilter[1].highpass();
 
-		// CV outputs - 0V to 10V or -5V to 5V in Oscillator Mode (10Vpp)
-		float xOut = oscMode ? xAudio : xCv;
-		float yOut = oscMode ? yAudio : yCv;
+		// CV outputs - 0V to 10V or -5V to 5V in Audio Rate Mode (10Vpp)
+		float xOut = audioRateMode ? xAudio : xCv;
+		float yOut = audioRateMode ? yAudio : yCv;
 		xOut = xOut * params[X_SCALE_PARAM].getValue() * 10.f;
 		yOut = yOut * params[Y_SCALE_PARAM].getValue() * 10.f;
-		outputs[X_CV_OUTPUT].setVoltage(xOut);
-		outputs[Y_CV_OUTPUT].setVoltage(yOut);
+		outputs[X_OUTPUT].setVoltage(xOut);
+		outputs[Y_OUTPUT].setVoltage(yOut);
 
 		// Pulse outputs (0V to 10V)
 		if (xBit)
-			xPulse.trigger(oscMode ? args.sampleTime : 1e-3f);
+			xPulse.trigger(audioRateMode ? args.sampleTime : 1e-3f);
 
 		if (yBit)
-			yPulse.trigger(oscMode ? args.sampleTime : 1e-3f);
+			yPulse.trigger(audioRateMode ? args.sampleTime : 1e-3f);
 
 		bool xGate = xPulse.process(args.sampleTime);
 		bool yGate = yPulse.process(args.sampleTime);
@@ -946,10 +946,9 @@ struct WolframModuleWidget : ModuleWidget {
 		}
 	};
 
-	// Custom lights
+	// Custom lights from Count Modula
 	template <typename TBase>
 	struct LuckyLight : RectangleLight<TSvgLight<TBase>> {	// Cursed
-		// Count Modula's custom light
 		LuckyLight() {
 			this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/RectangleLight.svg")));
 		}
@@ -1056,9 +1055,9 @@ struct WolframModuleWidget : ModuleWidget {
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(7.62f, 114.852f)), module, Wolfram::TRIG_INPUT));
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(19.05f, 114.852f)), module, Wolfram::INJECT_INPUT));
 		// Outputs
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(7.62f, 99.852f)), module, Wolfram::X_CV_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(7.62f, 99.852f)), module, Wolfram::X_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(19.05f, 99.852f)), module, Wolfram::X_PULSE_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(53.34f, 99.852f)), module, Wolfram::Y_CV_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(53.34f, 99.852f)), module, Wolfram::Y_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(41.91f, 99.852f)), module, Wolfram::Y_PULSE_OUTPUT));
 		// LEDs
 		addChild(createLightCentered<DiagonalLuckyLight<RedLight>>(mm2px(Vec(53.34f, 47.767f)), module, Wolfram::MODE_LIGHT)); 
@@ -1087,12 +1086,12 @@ struct WolframModuleWidget : ModuleWidget {
 
 		menu->addChild(createBoolPtrMenuItem("Sync", "", &module->sync));
 	
-		menu->addChild(createBoolMenuItem("Oscillator Mode", "",
+		menu->addChild(createBoolMenuItem("Audio Rate", "",
 			[=]() {
-				return module->oscMode;
+				return module->audioRateMode;
 			},
-			[=](bool oscMode) {
-				module->oscMode = oscMode;
+			[=](bool audioRateMode) {
+				module->audioRateMode = audioRateMode;
 				module->onSampleRateChange();
 			}
 		));

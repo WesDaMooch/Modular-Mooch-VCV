@@ -11,6 +11,11 @@
 #include <array>
 #include <cstdint>
 
+// TODO:
+// - Rename baseEngine to algoEngine.
+// - process() should be defined in algoEngine,
+// with functions such as generate(), inject() ect defined in child algoithms.
+
 static constexpr int MAX_SEQUENCE_LENGTH = 64;
 
 struct EngineMenuParams {
@@ -60,10 +65,10 @@ struct EngineToUiLayer {
 	char modeLabel[5]{};
 };
 
-class BaseEngine {
+class AlgoEngine {
 public:
-	BaseEngine();
-	virtual ~BaseEngine();
+	AlgoEngine();
+	virtual ~AlgoEngine();
 
 	virtual void updateDisplay(bool advance, size_t length = 8) = 0;
 	virtual void updateMenuParams(const EngineMenuParams& p) = 0;

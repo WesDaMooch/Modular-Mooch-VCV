@@ -6,37 +6,38 @@
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "baseEngine.hpp"
+#include "algoEngine.hpp"
 
-BaseEngine::BaseEngine() = default;
-BaseEngine::~BaseEngine() = default;
+AlgoEngine::AlgoEngine() = default;
+AlgoEngine::~AlgoEngine() = default;
 
 // Setters
-void BaseEngine::setReadHead(size_t newReadHead) {
+void AlgoEngine::setReadHead(size_t newReadHead) {
     readHead = rack::clamp(newReadHead, 0, MAX_SEQUENCE_LENGTH - 1);
 }
 
-void BaseEngine::setWriteHead(size_t newWriteHead) {
+void AlgoEngine::setWriteHead(size_t newWriteHead) {
     writeHead = rack::clamp(newWriteHead, 0, MAX_SEQUENCE_LENGTH - 1);
 }
 
 // Getters
-int BaseEngine::getReadHead() {
+int AlgoEngine::getReadHead() {
     return static_cast<int>(readHead);
 }
 
-int BaseEngine::getWriteHead() {
+int AlgoEngine::getWriteHead() {
     return static_cast<int>(writeHead);
 }
 
-void BaseEngine::getEngineLabel(char out[5]) {
+void AlgoEngine::getEngineLabel(char out[5]) {
     memcpy(out, engineLabel, 5);
 }
 
 // Helpers
-uint8_t BaseEngine::applyOffset(uint8_t inputRow, int inputOffset) {
-    int shift = inputOffset % 7;
-    if (shift > 4)  
+uint8_t AlgoEngine::applyOffset(uint8_t inputRow, int inputOffset) {
+    int shift = inputOffset % 8;
+    // TODO: is this shift right?
+    if (shift > 3)  
         shift -= 7;
     if (shift < -4) 
         shift += 7;

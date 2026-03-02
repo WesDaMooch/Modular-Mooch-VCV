@@ -16,11 +16,9 @@
     {
       "slug": "Wolfram",
       "name": "Wolfram",
-      "description": "Sequence Emergent Complexity",
+      "description": "Multi-algorithmic Generative Sequencer",
       "tags": [
         "Sequencer",
-        "Oscillator",
-        "Low-frequency oscillator", 
         "Random",
         "Digital"
       ]

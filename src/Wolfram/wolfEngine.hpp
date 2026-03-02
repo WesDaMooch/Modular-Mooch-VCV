@@ -7,9 +7,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
-#include "baseEngine.hpp"
+#include "algoEngine.hpp"
 
-class WolfEngine : public BaseEngine {
+class WolfEngine : public AlgoEngine {
 public:
 	WolfEngine();
 
