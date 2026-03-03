@@ -12,7 +12,6 @@
 #include <cstdint>
 
 // TODO:
-// - Rename baseEngine to algoEngine.
 // - process() should be defined in algoEngine,
 // with functions such as generate(), inject() ect defined in child algoithms.
 
