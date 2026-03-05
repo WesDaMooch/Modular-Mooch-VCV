@@ -1,7 +1,7 @@
 {
   "slug": "ModularMooch",
   "name": "Modular Mooch",
-  "version": "2.6.6", 
+  "version": "2.6.6",
   "license": "GPL-3.0-or-later",
   "brand": "Modular Mooch",
   "author": "Wesley Leggo-Morrell",
@@ -9,7 +9,7 @@
   "authorUrl": "",
   "pluginUrl": "https://github.com/WesDaMooch/Modular-Mooch-VCV",
   "sourceUrl": "https://github.com/WesDaMooch/Modular-Mooch-VCV",
-  "donateUrl": "",
+  "donateUrl": "https://www.paypal.com/donate/?hosted_button_id=BWB3HKRKDTSFC",
   "changelogUrl": "",
   "modules": [
     {
