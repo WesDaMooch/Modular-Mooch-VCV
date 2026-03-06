@@ -38,15 +38,14 @@
 // or an expander which opens up all Algos at once. 
 //
 // New algos!
-// A true Oscillator Mode could use the algos to generate wavetables.
+// A true Oscillator mode could use the algos to generate wavetables.
 
-
-#include <string>
-#include <atomic>
-#include "Wolfram/ui.hpp"
 #include "Wolfram/algoEngine.hpp"
 #include "Wolfram/wolfEngine.hpp"
 #include "Wolfram/lifeEngine.hpp"
+#include "Wolfram/ui.hpp"
+#include <string>
+#include <atomic>
 
 static constexpr int NUM_ENGINES = 2;
 static constexpr int NUM_MENU_PAGES = 4;
@@ -170,7 +169,7 @@ struct Wolfram : Module {
 
 	// UI
 	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512;
-	static constexpr  float MINI_MENU_DISPLAY_TIME = 0.75f;
+	static constexpr float MINI_MENU_DISPLAY_TIME = 0.75f;
 	std::array<EngineToUiLayer, NUM_ENGINES> engineToUiLayerA{};
 	std::array<EngineToUiLayer, NUM_ENGINES> engineToUiLayerB{};
 	std::atomic<EngineToUiLayer*> engineToUiLayerPtr{ engineToUiLayerA.data() };
@@ -289,7 +288,7 @@ struct Wolfram : Module {
 
 	void setSlew(int newSlewSelect) {
 		// Skew slewParam (0 - 100%) -> (0 - 1)
-		// Convert to ms, if Audio Rate Mode (0 - 10ms) else (0 - 1000ms)
+		// Convert to ms, if Audio Rate mode (0 - 10ms) else (0 - 1000ms)
 		slewValue = rack::clamp(newSlewSelect, 0, 100);
 		float slewSkew = std::pow(slewValue * 0.01f, 2.f);
 		float slew = audioRateMode ? (slewSkew * 10.f) : (slewSkew * 1000.f);
@@ -509,9 +508,9 @@ struct Wolfram : Module {
 		// Step
 		bool step = false;
 		float stepVoltage = inputs[TRIG_INPUT].getVoltage();
-		if (audioRateMode)// Zero crossing
+		if (audioRateMode)	// Zero crossing
 			step = (stepVoltage > 0.f && prevStepVoltage <= 0.f) || (stepVoltage < 0.f && prevStepVoltage >= 0.f);
-		else		// Pulse trigger	
+		else				// Pulse trigger	
 			step = trigTrigger.process(inputs[TRIG_INPUT].getVoltage(), 0.1f, 2.f);
 		prevStepVoltage = stepVoltage;
 
@@ -548,15 +547,15 @@ struct Wolfram : Module {
 			else
 				engineMenuParams[engineSelect].menuDelta[EngineMenuParams::MODE_DELTA] += 1;
 		}
+
 		pageNumber = pageCounter % NUM_MENU_PAGES;
 		if (pageNumber < 0)
 			pageNumber += NUM_MENU_PAGES;
 
 		// Encoder
 		engineCoreParams[engineIndex].miniMenuChanged = false;
-		float encoderValue = params[SELECT_PARAM].getValue();
-		float difference = encoderValue - prevEncoderValue;
-		int delta = static_cast<int>(std::round(difference / ENCODER_INDENT));
+		float encoderDifference = params[SELECT_PARAM].getValue() - prevEncoderValue;
+		int delta = std::round(encoderDifference / ENCODER_INDENT);
 
 		if ((delta != 0) || encoderReset) {
 			prevEncoderValue += delta * ENCODER_INDENT;

@@ -14,6 +14,7 @@
 // TODO:
 // - process() should be defined in algoEngine,
 // with functions such as generate(), inject() ect defined in child algoithms.
+// May require a renderOuputs(references to outs and modeLed) function.
 
 static constexpr int MAX_SEQUENCE_LENGTH = 64;
 

@@ -36,11 +36,8 @@ void AlgoEngine::getEngineLabel(char out[5]) {
 // Helpers
 uint8_t AlgoEngine::applyOffset(uint8_t inputRow, int inputOffset) {
     int shift = inputOffset % 8;
-    // TODO: is this shift right?
-    if (shift > 3)  
-        shift -= 7;
-    if (shift < -4) 
-        shift += 7;
+    if (shift > 3)
+        shift -= 8;
 
     if (shift < 0) {
         shift = -shift;
