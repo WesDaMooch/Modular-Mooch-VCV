@@ -949,7 +949,7 @@ struct WolframModuleWidget : ModuleWidget {
 	template <typename TBase>
 	struct LuckyLight : RectangleLight<TSvgLight<TBase>> {	// Cursed
 		LuckyLight() {
-			this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/RectangleLight.svg")));
+			this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/RectangleLuckyLight.svg")));
 		}
 
 		void drawHalo(const DrawArgs& args) override {
