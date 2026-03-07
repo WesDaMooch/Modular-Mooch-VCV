@@ -4,7 +4,7 @@
 // GitHub: https://github.com/WesDaMooch/Modular-Mooch-VCV
 // 
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
-// SPDX-License-Identifier: GPL-3.0-or-later
+// License: GPL-3.0-or-later
 
 #include "wolfEngine.hpp"
 

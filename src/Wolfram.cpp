@@ -4,7 +4,7 @@
 // GitHub: https://github.com/WesDaMooch/Modular-Mooch-VCV
 // 
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
-// SPDX-License-Identifier: GPL-3.0-or-later
+// License: GPL-3.0-or-later
 //
 // TSKVFZSIFXEOZSVEDMJLTLTHBEDGGNDZTXOVELCGOHRIEXENGKTSGX
 // UYEPQIOENITZSWXZOOLSSZNALTNNKKJMEASGIYISNGAZSULJGFTFLC
@@ -21,6 +21,7 @@
 // - Replace Slew menu page with FX page.
 // here an effect can be selected that is applied to the output,
 // the amount of effect that is applied is contolled by the Scale params.
+// See Audible Instruments Macro Oscillator 2 for multi-purpose knobs with dynamic tool tips.
 // Effects:
 // GAIN - (0 - 10Vpp).
 // RISE - Slew rise (left = exponencial, right = linear).
@@ -673,6 +674,8 @@ struct Wolfram : Module {
 };
 
 struct Display : TransparentWidget {
+	// TODO: see ZZC Clock for glowing display
+
 	Wolfram* module;
 	UI ui;
 
