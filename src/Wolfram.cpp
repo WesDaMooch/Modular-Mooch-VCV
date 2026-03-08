@@ -13,6 +13,8 @@
 // PTSBNPBISPPPWGOXKRPEAESROYZLFSAAALOQZLBKSGKMEX
 
 
+
+
 // PLANNED UPDATES:
 //
 // TODO: figure out if the EngineToUiLayer is the best way to do share data.
@@ -44,12 +46,13 @@
 #include "Wolfram/algoEngine.hpp"
 #include "Wolfram/wolfEngine.hpp"
 #include "Wolfram/lifeEngine.hpp"
-#include "Wolfram/ui.hpp"
 #include <string>
 #include <atomic>
 
 static constexpr int NUM_ENGINES = 2;
 static constexpr int NUM_MENU_PAGES = 4;
+static constexpr int NUM_DISPLAY_STYLES = 5;
+static constexpr int NUM_CELL_STYLES = 2;
 
 class SlewLimiter {
 public:
@@ -169,7 +172,7 @@ struct Wolfram : Module {
 	int engineIndex = 0;
 
 	// UI
-	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512;
+	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512; // TODO: needs updating in srate change
 	static constexpr float MINI_MENU_DISPLAY_TIME = 0.75f;
 	std::array<EngineToUiLayer, NUM_ENGINES> engineToUiLayerA{};
 	std::array<EngineToUiLayer, NUM_ENGINES> engineToUiLayerB{};
@@ -674,79 +677,230 @@ struct Wolfram : Module {
 };
 
 struct Display : TransparentWidget {
-	// TODO: see ZZC Clock for glowing display
+	// TODO: see ZZC Clock for glowing display.
+	
+	Wolfram* module = nullptr;
 
-	Wolfram* module;
-	UI ui;
+	static constexpr int NUM_COLS = 8;
+	static constexpr int NUM_ROWS = 8;
+	static constexpr int NUM_CELLS = NUM_COLS * NUM_ROWS;
+	static constexpr int NUM_TEXT_CHARS = 4;
+	// General
+	static constexpr float widgetSize = 94.49f; //mm2px(32.f);
+	static constexpr float padding = 1.f;
+	// Cells
+	static constexpr float circleCellSize = 5.f;
+	static constexpr float cellPadding = ((widgetSize - (padding * 2.f)) / NUM_COLS);
+	static constexpr float circleCellPadding = (cellPadding * 0.5f) + padding;
+
+	static constexpr float roundedSquareCellSize = 10.f;
+	static constexpr float roundedSquareCellBevel = 1.f;
+	// Text
+	static constexpr float fontSize = cellPadding * 2.f;
+	static constexpr float textBgSize = fontSize - 2.f;
+	static constexpr float textBgPadding = (fontSize * 0.5f) - (textBgSize * 0.5f) + padding;
+	static constexpr float textBgBevel = 3.f;
+	// Wolf
+	static constexpr float wolfSeedSize = (fontSize * 0.5f) - 2.f;
+	static constexpr float wolfSeedLineWidth = 0.5f;
+	static constexpr float wolfSeedBevel = 3.f;
+
+	int displayStyleIndex = 0;
+	int cellStyleIndex = 0;
 
 	std::shared_ptr<Font> font;
-	std::string fontPath;
 
-	int cols = 8;
-	int rows = 8;
-	float padding = 1.f;
-	float cellSize = 5.f;
+	std::array<Vec, NUM_CELLS> cellCirclePos{};
+	std::array<Vec, NUM_CELLS> cellRoundedSquarePos{};
+	std::array<Vec, NUM_TEXT_CHARS> textPos{};
+	std::array<Vec, 16> textBgPos{};
+	std::array<rack::math::Vec, NUM_COLS> wolfSeedPos{};
 
-	float cellPadding = 0;
-	float widgetSize = 0;
-	float fontSize = 0;
+	// Display styles
+	// static constexpr
+	std::array<std::array<NVGcolor, 3>, NUM_DISPLAY_STYLES> displayStyle{ {
+		{ nvgRGB(228, 7, 7),		nvgRGB(78, 12, 9),		nvgRGB(58, 16, 19) },		// Redrick
+		{ nvgRGB(205, 254, 254),	nvgRGB(39, 70, 153),	nvgRGB(37, 59, 99) },		// Oled
+		{ SCHEME_YELLOW,			SCHEME_DARK_GRAY,		SCHEME_DARK_GRAY },			// Rack  
+		{ nvgRGB(210, 255, 0),		nvgRGB(42, 47, 37),		nvgRGB(42, 47, 37) },		// Lamp 
+		{ nvgRGB(255, 255, 255),	nvgRGB(0, 0, 0),		nvgRGB(0, 0, 0) },			// Mono
+	} };
 
-	Display(Wolfram* m, float yPos, float w, float size) {
+	Display(Wolfram* m, float yPos, float moduleWidth) {
 		module = m;
 
-		// Wiget parameters
-		widgetSize = size;
-		float screenSize = widgetSize - (padding * 2.f);
-		fontSize = (screenSize / cols) * 2.f;
-		cellPadding = (screenSize / cols);
-
-		// Widget size
-		box.pos = Vec((w * 0.5f) - (widgetSize * 0.5f), yPos);
+		box.pos = Vec((moduleWidth * 0.5f) - (widgetSize * 0.5f), yPos);
 		box.size = Vec(widgetSize, widgetSize);
 
-		// Get font 
-		fontPath = std::string(asset::plugin(pluginInstance, "res/fonts/wolfram.otf"));
-		font = APP->window->loadFont(fontPath);
-		
-		ui.init(padding, fontSize, cellPadding);
+		// Text positions
+		for (int i = 0; i < NUM_TEXT_CHARS; i++) {
+			textPos[i].x = padding;
+			textPos[i].y = padding + (fontSize * i);
+		}
+
+		// Text background positions 
+		for (int col = 0; col < NUM_TEXT_CHARS; col++) {
+			for (int row = 0; row < NUM_TEXT_CHARS; row++) {
+				int i = row * NUM_TEXT_CHARS + col;
+				textBgPos[i].x = (fontSize * col) + textBgPadding;
+				textBgPos[i].y = (fontSize * row) + textBgPadding;
+			}
+		}
+
+		// Cell positions
+		float roundedSquareCellPadding = (cellPadding * 0.5f) - (roundedSquareCellSize * 0.5f) + padding;
+		for (int col = 0; col < NUM_COLS; col++) {
+			for (int row = 0; row < NUM_ROWS; row++) {
+				int i = row * NUM_COLS + col;
+				cellCirclePos[i].x = (cellPadding * col) + circleCellPadding;
+				cellCirclePos[i].y = (cellPadding * row) + circleCellPadding;
+				cellRoundedSquarePos[i].x = (cellPadding * col) + roundedSquareCellPadding;
+				cellRoundedSquarePos[i].y = (cellPadding * row) + roundedSquareCellPadding;
+
+			}
+		}
+
+		// Wolf seed display
+		float halfFontSize = fontSize * 0.5f;
+		float wolfSeedPadding = (halfFontSize * 0.5f) - (wolfSeedSize * 0.5f) + padding;
+		for (int col = 0; col < NUM_COLS; col++) {
+			wolfSeedPos[col].x = (halfFontSize * col) + wolfSeedPadding;
+			wolfSeedPos[col].y = (halfFontSize * 4.f) + wolfSeedPadding;
+		}
 	}
 
-	void drawDisplay(NVGcontext* vg, int layer) {
-		EngineToUiLayer* engineLayer = nullptr;
-		if (module)
-			engineLayer = module->engineToUiLayerPtr.load(std::memory_order_acquire);
+	void ensureFont() {
+		if (!font || (font->handle < 0))
+			font = APP->window->loadFont(asset::plugin(pluginInstance, "res/fonts/wolfram.ttf"));
+	}
 
-		int firstRow = 0;
-		bool menuActive = module ? module->menuActive : false;
-		bool miniMenuActive = module ? module->miniMenuActive : false;
-		int engineSelect = module ? module->engineSelect : 0;
-		int engineIndex = module ? module->engineIndex : 0;
+	void syncStyle() {
+		if (!module)
+			return;
 
-		// Set colour
-		NVGcolor colour = nvgRGB(0, 0, 0);
-		if (module) {
-			colour = (layer == 1) ?
-				ui.getForegroundColour() :
-				ui.getBackgroundColour();
+		displayStyleIndex = module->displayStyleIndex;
+		cellStyleIndex = module->cellStyleIndex;
+	}
+
+	// Getters
+	const NVGcolor& getForegroundColour() const {
+		int styleIndex = rack::clamp(displayStyleIndex, 0, NUM_DISPLAY_STYLES - 1);
+		return displayStyle[styleIndex][0];
+	}
+
+	const NVGcolor& getBackgroundColour() const {
+		int styleIndex = rack::clamp(displayStyleIndex, 0, NUM_DISPLAY_STYLES - 1);
+		return displayStyle[styleIndex][1];
+	}
+
+	const NVGcolor& getScreenColour() const {
+		int styleIndex = rack::clamp(displayStyleIndex, 0, NUM_DISPLAY_STYLES - 1);
+		return displayStyle[styleIndex][2];
+	}
+
+	void getCellPath(NVGcontext* vg, int col, int row) {
+		// Must call nvgBeginPath before and nvgFill after this function! 
+		int i = row * NUM_COLS + col;
+
+		if (cellStyleIndex == 1) {
+			// Pixel - Rounded square
+			nvgRoundedRect(vg, cellRoundedSquarePos[i].x, cellRoundedSquarePos[i].y,
+				roundedSquareCellSize, roundedSquareCellSize, roundedSquareCellBevel);
 		}
 		else {
-			colour = (layer == 1) ?
-				nvgRGB(228, 7, 7) :
-				nvgRGB(78, 12, 9);
+			// LED - Circle	
+			nvgCircle(vg, cellCirclePos[i].x, cellCirclePos[i].y, circleCellSize);
 		}
+	}
 
-		// Menu
-		if (menuActive || miniMenuActive) {
-			// Set font
-			if (!font)
-				return;
+	// Drawers
+	void drawText(NVGcontext* vg, const char* text, int row) {
+		// Draw a four character row of text
+		if ((row < 0) || (row >= NUM_TEXT_CHARS))
+			return;
 
+		nvgBeginPath(vg);
+		nvgFillColor(vg, getForegroundColour());
+		nvgText(vg, textPos[row].x, textPos[row].y, text, nullptr);
+	}
+
+	void drawMenuText(NVGcontext* vg, 
+		const char* line1,
+		const char* line2, 
+		const char* line3, 
+		const char* line4) {
+		// Helper for drawing four lines of menu text
+		drawText(vg, line1, 0);
+		drawText(vg, line2, 1);
+		drawText(vg, line3, 2);
+		drawText(vg, line4, 3);
+	}
+
+	void drawTextBg(NVGcontext* vg, int row) {
+		// Draw one row of four square text character backgrounds
+		if ((row < 0) || (row >= NUM_TEXT_CHARS))
+			return;
+
+		nvgBeginPath(vg);
+		nvgFillColor(vg, getBackgroundColour());
+		for (int col = 0; col < NUM_TEXT_CHARS; col++) {
+			int i = row * NUM_TEXT_CHARS + col;
+			nvgRoundedRect(vg, textBgPos[i].x, textBgPos[i].y,
+				textBgSize, textBgSize, textBgBevel);
+		}
+		nvgFill(vg);
+	}
+
+	void drawWolfSeedDisplay(NVGcontext* vg, int layer, uint8_t inputSeed) {
+		if (layer == 1) {
+			// Lines
+			nvgStrokeColor(vg, getForegroundColour());
+			nvgBeginPath(vg);
+			for (int col = 0; col < NUM_COLS; col++) {
+				if ((col >= 1) && (col <= 7)) {
+					// TODO: move to init
+					nvgMoveTo(vg, wolfSeedPos[col].x - padding, wolfSeedPos[col].y - 1);
+					nvgLineTo(vg, wolfSeedPos[col].x - padding, wolfSeedPos[col].y + 1);
+
+					nvgMoveTo(vg, wolfSeedPos[col].x - padding, (wolfSeedPos[col].y + (fontSize - textBgPadding)) - 1);
+					nvgLineTo(vg, wolfSeedPos[col].x - padding, (wolfSeedPos[col].y + (fontSize - textBgPadding)) + 1);
+				}
+			}
+			nvgStrokeWidth(vg, wolfSeedLineWidth);
+			nvgStroke(vg);
+		}
+		// Display 8-bit value
+		nvgFillColor(vg, layer ? getForegroundColour() : getBackgroundColour());
+		nvgBeginPath(vg);
+		for (int col = 0; col < NUM_COLS; col++) {
+			bool seedCell = (inputSeed >> (7 - col)) & 1;
+
+			if ((layer && !seedCell) || (!layer && seedCell))
+				continue;
+
+			nvgRoundedRect(vg, wolfSeedPos[col].x, wolfSeedPos[col].y,
+				wolfSeedSize, (wolfSeedSize * 2.f) + 2.f, wolfSeedBevel);
+		}
+		nvgFill(vg);
+	}
+
+	void drawMenu(NVGcontext* vg, EngineToUiLayer* eLayer, 
+		bool menu, bool miniMenu, 
+		int &firstRow, int layer) {
+
+		if (!module || !eLayer)
+			return;
+		
+		int engineSelect = module->engineSelect;
+
+		if (layer == 1) {
+			ensureFont();
 			nvgFontSize(vg, fontSize);
 			nvgFontFaceId(vg, font->handle);
 			nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
 		}
 
-		if (menuActive) {
+		if (menu) {
 			// Main menu
 			int pageNumber = module->pageNumber;
 
@@ -754,21 +908,21 @@ struct Display : TransparentWidget {
 			if (layer == 0) {
 				if ((pageNumber == 0) && (engineSelect == 0)) {
 					// Special Wolf seed display
-					int seed = engineLayer[0].seed;
+					int seed = eLayer[0].seed;
 					if (seed == 256) {
-						ui.drawTextBg(vg, 2);
+						drawTextBg(vg, 2);
 					}
 					else {
-						ui.drawWolfSeedDisplay(vg, layer, 
+						drawWolfSeedDisplay(vg, layer,
 							static_cast<uint8_t>(seed));
 					}
-					ui.drawTextBg(vg, 0);
-					ui.drawTextBg(vg, 1);
-					ui.drawTextBg(vg, 3);
+					drawTextBg(vg, 0);
+					drawTextBg(vg, 1);
+					drawTextBg(vg, 3);
 				}
 				else {
 					for (int i = 0; i < 4; i++)
-						ui.drawTextBg(vg, i);
+						drawTextBg(vg, i);
 				}
 			}
 			// Text
@@ -782,7 +936,7 @@ struct Display : TransparentWidget {
 					char engineLabel[5]{};
 					for (int i = 0; i < 4; i++) {
 						engineLabel[i] = std::tolower(static_cast<unsigned char>(
-							engineLayer[engineSelect].engineLabel[i]));
+							eLayer[engineSelect].engineLabel[i]));
 					}
 					engineLabel[4] = '\0';
 					std::copy(engineLabel, engineLabel + 4, header);
@@ -795,27 +949,27 @@ struct Display : TransparentWidget {
 					std::copy("SEED", "SEED" + 4, title);
 					if (engineSelect == 0) {
 						// Special Wolf seed display
-						int seed = engineLayer[0].seed;
+						int seed = eLayer[0].seed;
 						if (seed == 256) {
 							std::copy("RAND", "RAND" + 4, value);
 						}
 						else {
 							std::copy("    ", "    " + 4, value);
-							ui.drawWolfSeedDisplay(vg, layer,
+							drawWolfSeedDisplay(vg, layer,
 								static_cast<uint8_t>(seed));
 						}
 					}
 					else {
-						std::copy(engineLayer[engineSelect].seedLabel,
-							engineLayer[engineSelect].seedLabel + 4, value);
+						std::copy(eLayer[engineSelect].seedLabel,
+							eLayer[engineSelect].seedLabel + 4, value);
 					}
 					break;
 				}
 				case 1: {
 					// Mode page
 					std::copy("MODE", "MODE" + 4, title);
-					std::copy(engineLayer[engineSelect].modeLabel,
-						engineLayer[engineSelect].modeLabel + 4, value);
+					std::copy(eLayer[engineSelect].modeLabel,
+						eLayer[engineSelect].modeLabel + 4, value);
 					break;
 				}
 				case 2: {
@@ -829,79 +983,95 @@ struct Display : TransparentWidget {
 				case 3: {
 					// Algo page
 					std::copy("ALGO", "ALGO" + 4, title);
-					std::copy(engineLayer[engineSelect].engineLabel,
-						engineLayer[engineSelect].engineLabel + 4, value);
+					std::copy(eLayer[engineSelect].engineLabel,
+						eLayer[engineSelect].engineLabel + 4, value);
 					break;
 				}
 				default: { break; }
 				}
-				ui.drawMenuText(vg, header, title, value, footer);
+				drawMenuText(vg, header, title, value, footer);
 			}
-			return;
 		}
-		else if (miniMenuActive) {
+		else if (miniMenu) {
 			// Mini menu
-			firstRow = rows - 4;
+			firstRow = NUM_ROWS - 4;
 			// Text background
 			if (layer == 0) {
 				for (int i = 0; i < 2; i++)
-					ui.drawTextBg(vg, i);
+					drawTextBg(vg, i);
 			}
 			// Text
 			else if (layer == 1) {
-				ui.drawText(vg, "RULE", 0);
-				ui.drawText(vg, engineLayer[engineSelect].ruleSelectLabel, 1);
+				drawText(vg, "RULE", 0);
+				drawText(vg, eLayer[engineSelect].ruleSelectLabel, 1);
 			}
 		}
+	}
 
-		// Matrix display
+	void drawMatrix(NVGcontext* vg, EngineToUiLayer* eLayer, 
+		int firstRow, int layer) {
+
 		uint64_t matrix = 0x81C326F48FCULL;
-		if (module)
-			matrix = engineLayer[engineIndex].display;
+		if (module && eLayer) {
+			int engineIndex = module->engineIndex;
+			matrix = eLayer[engineIndex].display;
+		}
 
 		nvgBeginPath(vg);
-		nvgFillColor(vg, colour);
+		nvgFillColor(vg, layer ? getForegroundColour() : getBackgroundColour());
 
-		for (int row = firstRow; row < 8; row++) {
+		for (int row = firstRow; row < NUM_ROWS; row++) {
 			int rowInvert = 7 - row;
 
 			uint8_t rowBits = (matrix >> (rowInvert << 3)) & 0xFF;
 
 			if (layer == 0)
 				rowBits = static_cast<uint8_t>(~rowBits);
-			
-			int i = 0;
-			while (rowBits && (i < rows)) {
-				int colInvert = __builtin_ctz(static_cast<unsigned>(rowBits));
+
+			while (rowBits) {
+				//int colInvert = __builtin_ctz(static_cast<unsigned>(rowBits));
+				int colInvert = rack::math::log2(rowBits & -rowBits);
 				rowBits &= rowBits - 1;
 
 				int col = 7 - colInvert;
 
 				if (module) {
-					ui.getCellPath(vg, col, row);
+					getCellPath(vg, col, row);
 				}
 				else {
-					// Preview window drawing
-					float pad = (cellPadding * 0.5f) + padding;
-					nvgCircle(vg, (cellPadding * col) + pad,
-						(cellPadding * row) + pad, 5.f);
+					// Preview window
+					nvgCircle(vg, (cellPadding * col) + circleCellPadding,
+						(cellPadding * row) + circleCellPadding, circleCellSize);
 				}
-				i++;
 			}
 		}
 		nvgFill(vg);
 	}
 
-	void draw(const DrawArgs& args) override {
-		ui.displayStyleIndex = module ? module->displayStyleIndex : 0;
-		ui.cellStyleIndex = module ? module->cellStyleIndex : 0;
+	void drawDisplay(NVGcontext* vg, int layer) {
+		EngineToUiLayer* engineLayer = nullptr;
+		if (module)
+			engineLayer = module->engineToUiLayerPtr.load(std::memory_order_acquire);
 
-		NVGcolor backgroundColour = ui.getScreenColour();
+		int firstRow = 0;
+		bool menuActive = module ? module->menuActive : false;
+		bool miniMenuActive = module ? module->miniMenuActive : false;
+
+		if (menuActive || miniMenuActive)
+			drawMenu(vg, engineLayer, menuActive, miniMenuActive, firstRow, layer);
+
+		if (!menuActive)
+			drawMatrix(vg, engineLayer, firstRow, layer);
+	}
+
+	void draw(const DrawArgs& args) override {
+
+		syncStyle();
 
 		nvgBeginPath(args.vg);
 		nvgRoundedRect(args.vg, padding * 0.5f, padding * 0.5f,
 			widgetSize - padding, widgetSize - padding, 2.f);
-		nvgFillColor(args.vg, backgroundColour);
+		nvgFillColor(args.vg, getScreenColour());
 		nvgFill(args.vg);
 
 		nvgStrokeWidth(args.vg, padding);
@@ -916,15 +1086,13 @@ struct Display : TransparentWidget {
 		if (layer != 1)
 			return;
 
-		ui.displayStyleIndex = module ? module->displayStyleIndex : 0;
-		ui.cellStyleIndex = module ? module->cellStyleIndex : 0;
+		syncStyle();
 		drawDisplay(args.vg, layer);
 		Widget::drawLayer(args, layer);
 	}
 };
 
 struct WolframModuleWidget : ModuleWidget {
-
 	// Custom knobs & dials
 	struct LengthKnob : M1900hBlackKnob {
 		LengthKnob() {
@@ -948,7 +1116,7 @@ struct WolframModuleWidget : ModuleWidget {
 		}
 	};
 
-	// Custom lights from Count Modula
+	// Custom light from Count Modula
 	template <typename TBase>
 	struct LuckyLight : RectangleLight<TSvgLight<TBase>> {	// Cursed
 		LuckyLight() {
@@ -1068,7 +1236,7 @@ struct WolframModuleWidget : ModuleWidget {
 		addChild(createLightCentered<LuckyLight<RedLight>>(mm2px(Vec(41.91f, 90.225f)), module, Wolfram::Y_PULSE_LIGHT));	
 		addChild(createLightCentered<LuckyLight<RedLight>>(mm2px(Vec(53.34f, 90.225f)), module, Wolfram::Y_LIGHT));
 		
-		Display* display = new Display(module, mm2px(10.14f), box.size.x, mm2px(32.f));
+		Display* display = new Display(module, mm2px(10.14f), box.size.x);
 		addChild(display);
 	}
 	
