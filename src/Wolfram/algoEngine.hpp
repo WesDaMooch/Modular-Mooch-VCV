@@ -49,15 +49,9 @@ struct EngineCoreParams {
 
 struct EngineToUiLayer {
 	// Used to take a snapshot of the engine's current values,
-	// to be safely read by the UI and patch saver
-	std::array<uint64_t, MAX_SEQUENCE_LENGTH> matrixBuffer{};
+	// to be safely read by the UI.
 	uint64_t display = 0;
-	uint64_t displaySave = 0;
-	int readHead = 0;
-	int writeHead = 0;
-	int ruleSelect = 0;
-	int seed = 0;
-	int mode = 0;
+	int seed = 0;	// Used for Wolf seed display
 	char engineLabel[5]{};
 	char ruleActiveLabel[5]{};
 	char ruleSelectLabel[5]{};

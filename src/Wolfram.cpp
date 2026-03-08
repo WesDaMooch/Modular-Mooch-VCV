@@ -126,12 +126,14 @@ struct Wolfram : Module {
 			if (!m)
 				return defaultString;
 
+			EngineToUiLayer* engineLayer = m->engineToUiLayerPtr.load(std::memory_order_acquire);
+			if (!engineLayer)
+				return defaultString;
+
 			bool engineModulation = m->engineModulation;
 			bool ruleModulation = m->ruleModulation;
 			int engineSelect = m->engineSelect;
 			int engineIndex = m->engineIndex;
-
-			EngineToUiLayer* engineLayer = m->engineToUiLayerPtr.load(std::memory_order_acquire);
 
 			std::string ruleSelectString = std::string(engineLayer[engineSelect].ruleSelectLabel);
 			ruleSelectString.erase(0, ruleSelectString.find_first_not_of(" "));
@@ -247,14 +249,6 @@ struct Wolfram : Module {
 		onSampleRateChange();
 	}
 
-	bool checkEngineIsNull(int index) {
-		if (engine[index] == nullptr) {
-			DEBUG("error: engine[%d] is NULL (ptr=%p)", index, (void*)engine[index]);
-			return true;
-		}
-		return false;
-	}
-
 	void setEngine(int newEngineSelect, float newEngineCv = 0.f) {
 		engineSelect = rack::clamp(newEngineSelect, 0, NUM_ENGINES - 1);
 		int engineCv = std::round(newEngineCv * (NUM_ENGINES - 1));
@@ -267,19 +261,9 @@ struct Wolfram : Module {
 		flip = !flip;
 
 		for (int i = 0; i < NUM_ENGINES; i++) {
-			if (checkEngineIsNull(i))
-				continue;
-			
-			for (int j = 0; j < MAX_SEQUENCE_LENGTH; j++)
-				writeState[i].matrixBuffer[j] = engine[i]->getBufferFrame(j);
-
+	
 			writeState[i].display = engine[i]->getBufferFrame(0, true);
-			writeState[i].displaySave = engine[i]->getBufferFrame(0, false, true);
-			writeState[i].readHead = engine[i]->getReadHead();
-			writeState[i].writeHead = engine[i]->getWriteHead();
-			writeState[i].ruleSelect = engine[i]->getRuleSelect();
 			writeState[i].seed = engine[i]->getSeed();
-			writeState[i].mode = engine[i]->getMode();
 			engine[i]->getEngineLabel(writeState[i].engineLabel);
 			engine[i]->getRuleActiveLabel(writeState[i].ruleActiveLabel);
 			engine[i]->getRuleSelectLabel(writeState[i].ruleSelectLabel);
@@ -326,11 +310,8 @@ struct Wolfram : Module {
 		setSlew(0);
 		setEngine(0);
 		
-		for (int i = 0; i < NUM_ENGINES; i++) {
-			if (checkEngineIsNull(i))
-				continue;
+		for (int i = 0; i < NUM_ENGINES; i++)
 			engine[i]->reset();
-		}
 		
 		displayStyleIndex = 0;
 		cellStyleIndex = 0;
@@ -355,9 +336,6 @@ struct Wolfram : Module {
 		json_object_set_new(rootJ, "displayStyle", json_integer(displayStyleIndex));
 		json_object_set_new(rootJ, "cellStyle", json_integer(cellStyleIndex));
 
-		// Save engine specifics
-		EngineToUiLayer* engineLayer = engineToUiLayerPtr.load(std::memory_order_acquire);
-
 		json_t* readHeadsJ = json_array();
 		json_t* writeHeadsJ = json_array();
 		json_t* rulesJ = json_array();
@@ -367,16 +345,16 @@ struct Wolfram : Module {
 		json_t* buffersJ = json_array();
 
 		for (int i = 0; i < NUM_ENGINES; i++) {
-			json_array_append_new(rulesJ, json_integer(engineLayer[i].ruleSelect));
-			json_array_append_new(seedsJ, json_integer(engineLayer[i].seed));
-			json_array_append_new(modesJ, json_integer(engineLayer[i].mode));
-			json_array_append_new(readHeadsJ, json_integer(engineLayer[i].readHead));
-			json_array_append_new(writeHeadsJ, json_integer(engineLayer[i].writeHead));
-			json_array_append_new(displaysJ, json_integer(engineLayer[i].displaySave));
+			json_array_append_new(rulesJ, json_integer(engine[i]->getRuleSelect()));
+			json_array_append_new(seedsJ, json_integer(engine[i]->getSeed()));
+			json_array_append_new(modesJ, json_integer(engine[i]->getMode()));
+			json_array_append_new(readHeadsJ, json_integer(engine[i]->getReadHead()));
+			json_array_append_new(writeHeadsJ, json_integer(engine[i]->getWriteHead()));
+			json_array_append_new(displaysJ, json_integer(engine[i]->getBufferFrame(0, false, true)));
 
 			json_t* rowJ = json_array();
 			for (int j = 0; j < MAX_SEQUENCE_LENGTH; j++)
-				json_array_append_new(rowJ, json_integer(engineLayer[i].matrixBuffer[j]));
+				json_array_append_new(rowJ, json_integer(engine[i]->getBufferFrame(j)));
 			json_array_append_new(buffersJ, rowJ);
 		}
 		
@@ -428,9 +406,6 @@ struct Wolfram : Module {
 		json_t* displaysJ = json_object_get(rootJ, "displays");
 
 		for (int i = 0; i < NUM_ENGINES; i++) {
-			if (checkEngineIsNull(i))
-				continue;
-
 			if (readHeadsJ) {
 				json_t* valueJ = json_array_get(readHeadsJ, i);
 
@@ -486,20 +461,6 @@ struct Wolfram : Module {
 	}
 	
 	void process(const ProcessArgs& args) override {
-		for (int i = 0; i < NUM_ENGINES; i++) {
-			if (checkEngineIsNull(i)) {
-				outputs[X_OUTPUT].setVoltage(0.f);
-				outputs[Y_OUTPUT].setVoltage(0.f);
-				outputs[X_PULSE_OUTPUT].setVoltage(0.f);
-				outputs[Y_PULSE_OUTPUT].setVoltage(0.f);
-				lights[MODE_LIGHT].setBrightness(0.f);
-				lights[X_LIGHT].setBrightness(0.f);
-				lights[Y_LIGHT].setBrightness(0.f);
-				lights[X_PULSE_LIGHT].setBrightness(0.f);
-				lights[Y_PULSE_LIGHT].setBrightness(0.f);
-				return;
-			}
-		}
 
 		for (int i = 0; i < NUM_ENGINES; i++) {
 			// Clear menu parameter's delta and reset
@@ -530,7 +491,7 @@ struct Wolfram : Module {
 		engineCoreParams[engineIndex].reset = resetTrigger.process(inputs[RESET_INPUT].getVoltage(), 0.1f, 2.f);
 		engineCoreParams[engineIndex].sync = sync;
 
-		size_t lengthIndex = rack::clamp(static_cast<int>(params[LENGTH_PARAM].getValue()), 0, 8);
+		size_t lengthIndex = static_cast<size_t>(params[LENGTH_PARAM].getValue());
 		sequenceLength = sequenceLengths[lengthIndex];
 		engineCoreParams[engineIndex].length = sequenceLength;
 
