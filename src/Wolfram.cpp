@@ -43,11 +43,19 @@
 // New algos!
 // A true Oscillator mode could use the algos to generate wavetables.
 
+
+
+
 #include "Wolfram/algoEngine.hpp"
 #include "Wolfram/wolfEngine.hpp"
 #include "Wolfram/lifeEngine.hpp"
 #include <string>
 #include <atomic>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <inttypes.h>
 
 static constexpr int NUM_ENGINES = 2;
 static constexpr int NUM_MENU_PAGES = 4;
@@ -121,7 +129,7 @@ struct Wolfram : Module {
 		// Custom behaviour to display rule when hovering over Select encoder 
 		std::string getDisplayValueString() override {
 			std::string defaultString = "30";
-
+			// TODO: consider using static_cast?
 			auto* m = dynamic_cast<Wolfram*>(module);
 			if (!m)
 				return defaultString;
@@ -316,12 +324,41 @@ struct Wolfram : Module {
 		displayStyleIndex = 0;
 		cellStyleIndex = 0;
 	}
+
+	static std::string packUint64Array(const uint64_t* data, size_t count) {
+		// Pack buffer for saveing
+		std::string out;
+		out.reserve(count * 16);
+
+		char buf[17];
+
+		for (size_t i = 0; i < count; i++) {
+			snprintf(buf, sizeof(buf), "%016" PRIx64, data[i]);
+			out.append(buf);
+		}
+
+		return out;
+	}
+
+	static void unpackUint64Array(const char* str, uint64_t* data, size_t count) {
+		// Unpack loaded string for buffer
+		if (!str)
+			return;
+
+		size_t len = strlen(str);
+		if (len < count * 16)
+			return;
+
+		char buf[17];
+		buf[16] = '\0';
+
+		for (size_t i = 0; i < count; i++) {
+			memcpy(buf, str + (i * 16), 16);
+			data[i] = strtoull(buf, nullptr, 16);
+		}
+	}
 	
 	json_t* dataToJson() override {
-		// Engine buffers & display use uint64_t, yet the patch json uses 'int'.
-		// There seems to be no issue at the moment with this conflict.
-		// TODO: Could the 64-bit buffer int by encoded as a string?
-
 		json_t* rootJ = json_object();
 
 		// Save sequencer settings
@@ -350,12 +387,19 @@ struct Wolfram : Module {
 			json_array_append_new(modesJ, json_integer(engine[i]->getMode()));
 			json_array_append_new(readHeadsJ, json_integer(engine[i]->getReadHead()));
 			json_array_append_new(writeHeadsJ, json_integer(engine[i]->getWriteHead()));
-			json_array_append_new(displaysJ, json_integer(engine[i]->getBufferFrame(0, false, true)));
 
-			json_t* rowJ = json_array();
+			// Save display frame
+			uint64_t matrixDisplay = engine[i]->getBufferFrame(0, false, true);
+			char displayStr[17];
+			snprintf(displayStr, sizeof(displayStr), "%016" PRIx64, matrixDisplay);
+			json_array_append_new(displaysJ, json_string(displayStr));
+
+			// Pack entire buffer into one string
+			uint64_t frames[MAX_SEQUENCE_LENGTH];
 			for (int j = 0; j < MAX_SEQUENCE_LENGTH; j++)
-				json_array_append_new(rowJ, json_integer(engine[i]->getBufferFrame(j)));
-			json_array_append_new(buffersJ, rowJ);
+				frames[j] = engine[i]->getBufferFrame(j);
+			std::string packed = packUint64Array(frames, MAX_SEQUENCE_LENGTH);
+			json_array_append_new(buffersJ, json_string(packed.c_str()));
 		}
 		
 		json_object_set_new(rootJ, "readHeads", readHeadsJ);
@@ -436,26 +480,30 @@ struct Wolfram : Module {
 				if (valueJ)
 					engine[i]->setMode(json_integer_value(valueJ));
 			}
+
+			// Display frame
 			if (displaysJ) {
-				json_t* valueJ = json_array_get(displaysJ, i);
-
-				if (valueJ)
-					engine[i]->setBufferFrame(static_cast<uint64_t>(json_integer_value(valueJ)), 0, true);
-			}
-
-			// Load Buffers
-			if (buffersJ) {
-				json_t* rowJ = json_array_get(buffersJ, i);
-
-				if (rowJ) {
-					for (int j = 0; j < MAX_SEQUENCE_LENGTH; j++) {
-						json_t* valueJ = json_array_get(rowJ, j);
-
-						if (valueJ)
-							engine[i]->setBufferFrame(static_cast<uint64_t>(json_integer_value(valueJ)), j);
-					}
+				json_t* v = json_array_get(displaysJ, i);
+				if (json_is_string(v)) {
+					uint64_t matrixDisplay = strtoull(json_string_value(v), nullptr, 16);
+					engine[i]->setBufferFrame(matrixDisplay, 0, true);
 				}
 			}
+
+			// Buffer frames
+			if (buffersJ) {
+				json_t* v = json_array_get(buffersJ, i);
+
+				if (json_is_string(v)) {
+					uint64_t matrixFrames[MAX_SEQUENCE_LENGTH];
+
+					unpackUint64Array(json_string_value(v), matrixFrames, MAX_SEQUENCE_LENGTH);
+
+					for (int j = 0; j < MAX_SEQUENCE_LENGTH; j++)
+						engine[i]->setBufferFrame(matrixFrames[j], j);
+				}	
+			}
+
 			engine[i]->updateDisplay(false);
 		}
 	}
@@ -580,10 +628,8 @@ struct Wolfram : Module {
 		engineCoreParams[engineIndex].inject = injectState;
 		
 		// OUTPUTS
-		float xCv = 0.f; 
-		float yCv = 0.f;
-		bool xBit = false;
-		bool yBit = false;
+		float xCv = 0.f, yCv = 0.f; 
+		bool xBit = false, yBit = false;
 		float modeLED = 0.f;
 	
 		for (int i = 0; i < NUM_ENGINES; i++)
