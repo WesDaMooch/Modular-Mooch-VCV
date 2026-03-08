@@ -1049,9 +1049,25 @@ struct Display : TransparentWidget {
 	}
 
 	void drawDisplay(NVGcontext* vg, int layer) {
-		EngineToUiLayer* engineLayer = nullptr;
-		if (module)
-			engineLayer = module->engineToUiLayerPtr.load(std::memory_order_acquire);
+		syncStyle();
+
+		EngineToUiLayer* engineLayer = module ?
+			module->engineToUiLayerPtr.load(std::memory_order_acquire):
+			nullptr;
+
+		// Backgound
+		if (layer == 0) {
+			nvgBeginPath(vg);
+			nvgRoundedRect(vg, padding * 0.5f, padding * 0.5f,
+				widgetSize - padding, widgetSize - padding, 2.f);
+			nvgFillColor(vg, getScreenColour());
+			nvgFill(vg);
+			// Outline
+			nvgStrokeWidth(vg, padding);
+			nvgStrokeColor(vg, nvgRGB(16, 16, 16));
+			nvgStroke(vg);
+			nvgClosePath(vg);
+		}
 
 		int firstRow = 0;
 		bool menuActive = module ? module->menuActive : false;
@@ -1065,20 +1081,6 @@ struct Display : TransparentWidget {
 	}
 
 	void draw(const DrawArgs& args) override {
-
-		syncStyle();
-
-		nvgBeginPath(args.vg);
-		nvgRoundedRect(args.vg, padding * 0.5f, padding * 0.5f,
-			widgetSize - padding, widgetSize - padding, 2.f);
-		nvgFillColor(args.vg, getScreenColour());
-		nvgFill(args.vg);
-
-		nvgStrokeWidth(args.vg, padding);
-		nvgStrokeColor(args.vg, nvgRGB(16, 16, 16));
-		nvgStroke(args.vg);
-		nvgClosePath(args.vg);
-
 		drawDisplay(args.vg, 0);
 	}
 
@@ -1086,7 +1088,6 @@ struct Display : TransparentWidget {
 		if (layer != 1)
 			return;
 
-		syncStyle();
 		drawDisplay(args.vg, layer);
 		Widget::drawLayer(args, layer);
 	}
