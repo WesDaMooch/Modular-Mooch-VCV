@@ -51,10 +51,9 @@
 #include "Wolfram/lifeEngine.hpp"
 #include <string>
 #include <atomic>
-#include <cctype>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
+#include <cstdlib>
 #include <inttypes.h>
 
 static constexpr int NUM_ENGINES = 2;
@@ -77,7 +76,6 @@ public:
 	}
 
 	float process(float x) {
-		// TODO: Could pass x as reference.
 		y += rack::clamp(x - y, -slew, slew);
 		return y;
 	}
@@ -129,8 +127,7 @@ struct Wolfram : Module {
 		// Custom behaviour to display rule when hovering over Select encoder 
 		std::string getDisplayValueString() override {
 			std::string defaultString = "30";
-			// TODO: consider using static_cast?
-			auto* m = dynamic_cast<Wolfram*>(module);
+			auto* m = static_cast<Wolfram*>(module);
 			if (!m)
 				return defaultString;
 
@@ -162,7 +159,7 @@ struct Wolfram : Module {
 	struct LengthParamQuantity : ParamQuantity {
 		// Custom behaviour to display sequence length when hovering over Length knob
 		float getDisplayValue() override {
-			auto* m = dynamic_cast<Wolfram*>(module);
+			auto* m = static_cast<Wolfram*>(module);
 			return m ? static_cast<float>(m->sequenceLength) : 8.f;
 		}
 		
@@ -182,7 +179,7 @@ struct Wolfram : Module {
 	int engineIndex = 0;
 
 	// UI
-	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512; // TODO: needs updating in srate change
+	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512; // TODO: needs updating onSamplerateChange.
 	static constexpr float MINI_MENU_DISPLAY_TIME = 0.75f;
 	std::array<EngineToUiLayer, NUM_ENGINES> engineToUiLayerA{};
 	std::array<EngineToUiLayer, NUM_ENGINES> engineToUiLayerB{};
@@ -193,6 +190,7 @@ struct Wolfram : Module {
 	int displayStyleIndex = 0;
 	int cellStyleIndex = 0;
 	bool miniMenuActive = false;
+	bool uiFlip = false;
 
 	// Select encoder
 	static constexpr float ENCODER_INDENT = 1.f / 30.f;
@@ -200,7 +198,10 @@ struct Wolfram : Module {
 	bool encoderReset = false;
 
 	// Parameters
-	std::array<size_t, 9> sequenceLengths { 2, 3, 4, 6, 8, 12, 16, 32, 64 };
+	static constexpr int NUM_SEQUENCE_LENGTHS = 9;
+	std::array<size_t, NUM_SEQUENCE_LENGTHS> sequenceLengths { 
+		2, 3, 4, 6, 8, 12, 16, 32, 64 
+	};
 	size_t sequenceLength = 8;
 	int slewValue = 0;
 	bool sync = false;
@@ -259,17 +260,18 @@ struct Wolfram : Module {
 
 	void setEngine(int newEngineSelect, float newEngineCv = 0.f) {
 		engineSelect = rack::clamp(newEngineSelect, 0, NUM_ENGINES - 1);
-		int engineCv = std::round(newEngineCv * (NUM_ENGINES - 1));
+		int engineCv = rack::clamp(
+			static_cast<int>(std::round(newEngineCv * (NUM_ENGINES - 1))),
+			0, NUM_ENGINES - 1
+		);
 		engineIndex = engineModulation ? engineCv : engineSelect;
 	}
 
 	void updateEngineToUiLayer() {
-		static bool flip = false;
-		EngineToUiLayer* writeState = flip ? engineToUiLayerA.data() : engineToUiLayerB.data();
-		flip = !flip;
-
+		uiFlip = !uiFlip;
+		EngineToUiLayer* writeState = uiFlip ? engineToUiLayerA.data() : engineToUiLayerB.data();
+		
 		for (int i = 0; i < NUM_ENGINES; i++) {
-	
 			writeState[i].display = engine[i]->getBufferFrame(0, true);
 			writeState[i].seed = engine[i]->getSeed();
 			engine[i]->getEngineLabel(writeState[i].engineLabel);
@@ -277,7 +279,6 @@ struct Wolfram : Module {
 			engine[i]->getRuleSelectLabel(writeState[i].ruleSelectLabel);
 			engine[i]->getSeedLabel(writeState[i].seedLabel);
 			engine[i]->getModeLabel(writeState[i].modeLabel);
-			
 		}
 		engineToUiLayerPtr.store(writeState, std::memory_order_release);
 	}
@@ -325,12 +326,13 @@ struct Wolfram : Module {
 		cellStyleIndex = 0;
 	}
 
+	// Whhhat, pretty cool way of doing things
 	static std::string packUint64Array(const uint64_t* data, size_t count) {
 		// Pack buffer for saveing
 		std::string out;
 		out.reserve(count * 16);
 
-		char buf[17];
+		char buf[17] = {};
 
 		for (size_t i = 0; i < count; i++) {
 			snprintf(buf, sizeof(buf), "%016" PRIx64, data[i]);
@@ -341,20 +343,24 @@ struct Wolfram : Module {
 	}
 
 	static void unpackUint64Array(const char* str, uint64_t* data, size_t count) {
-		// Unpack loaded string for buffer
-		if (!str)
+		// Unpack string for buffer loading
+		if (!str || !data)
 			return;
 
-		size_t len = strlen(str);
-		if (len < count * 16)
-			return;
+		size_t expected = count * 16;
+		size_t len = std::strlen(str);
 
-		char buf[17];
+		if (len != expected) {
+			std::memset(data, 0, count * sizeof(uint64_t));
+			return;
+		}
+
+		char buf[17] = {};
 		buf[16] = '\0';
 
-		for (size_t i = 0; i < count; i++) {
-			memcpy(buf, str + (i * 16), 16);
-			data[i] = strtoull(buf, nullptr, 16);
+		for (size_t i = 0; i < count; ++i) {
+			std::memcpy(buf, str + (i * 16), 16);
+			data[i] = std::strtoull(buf, nullptr, 16);
 		}
 	}
 	
@@ -509,6 +515,17 @@ struct Wolfram : Module {
 	}
 	
 	void process(const ProcessArgs& args) override {
+		// TODO: used AlgoEngine* activeEngine = engine[engineIndex],
+		// same with engineMenuParams maybe.
+		// TODO: currently encoderReset and miniMenuChange are used for the same seed reset,
+		// they need to be seperated so that an encoder reset can push a seed when the engine is being modulated.
+
+		/* TODO: could be a better way to clear menu parameter's delta and reset.
+		for (auto& menu : engineMenuParams) {
+			std::fill(std::begin(menu.menuDelta), std::end(menu.menuDelta), 0);
+			std::fill(std::begin(menu.menuReset), std::end(menu.menuReset), false);
+		}
+		*/
 
 		for (int i = 0; i < NUM_ENGINES; i++) {
 			// Clear menu parameter's delta and reset
@@ -524,51 +541,61 @@ struct Wolfram : Module {
 		if (audioRateMode)	// Zero crossing
 			step = (stepVoltage > 0.f && prevStepVoltage <= 0.f) || (stepVoltage < 0.f && prevStepVoltage >= 0.f);
 		else				// Pulse trigger	
-			step = trigTrigger.process(inputs[TRIG_INPUT].getVoltage(), 0.1f, 2.f);
+			step = trigTrigger.process(stepVoltage, 0.1f, 2.f);
 		prevStepVoltage = stepVoltage;
-
+		// Engine
 		engineModulation = inputs[ENGINE_CV_INPUT].isConnected();
-		float newEngineCv = rack::clamp(inputs[ENGINE_CV_INPUT].getVoltage() * 0.1f, -1.f, 1.f);
-		if (sync && step)
+		float engineCvVoltage = inputs[ENGINE_CV_INPUT].getVoltage();
+		float newEngineCv = engineCvVoltage * 0.1f;
+		if(sync && step)
 			syncedEngineCv = newEngineCv;
 		setEngine(engineSelect, sync ? syncedEngineCv : newEngineCv);
 
 		engineCoreParams[engineIndex].step = step;
+		// Rule 
 		ruleModulation = inputs[RULE_CV_INPUT].isConnected();
-		engineCoreParams[engineIndex].ruleCv = rack::clamp(inputs[RULE_CV_INPUT].getVoltage() * 0.1f, -1.f, 1.f);
-		engineCoreParams[engineIndex].reset = resetTrigger.process(inputs[RESET_INPUT].getVoltage(), 0.1f, 2.f);
+		float ruleCvVoltage = inputs[RULE_CV_INPUT].getVoltage();
+		engineCoreParams[engineIndex].ruleCv = rack::clamp(ruleCvVoltage * 0.1f, -1.f, 1.f);
+		// Reset
+		float resetVoltage = inputs[RESET_INPUT].getVoltage();
+		engineCoreParams[engineIndex].reset = resetTrigger.process(resetVoltage, 0.1f, 2.f);
+		// Sync
 		engineCoreParams[engineIndex].sync = sync;
-
-		size_t lengthIndex = static_cast<size_t>(params[LENGTH_PARAM].getValue());
+		// Length
+		int lengthValue = static_cast<int>(params[LENGTH_PARAM].getValue());
+		size_t lengthIndex = rack::clamp(lengthValue, 0, NUM_SEQUENCE_LENGTHS - 1);
 		sequenceLength = sequenceLengths[lengthIndex];
 		engineCoreParams[engineIndex].length = sequenceLength;
+		// Probability
+		float probabilityCvVoltage = inputs[PROBABILITY_CV_INPUT].getVoltage();
+		float probabilityCv = probabilityCvVoltage * 0.1f;
+		float probabilityValue = params[PROBABILITY_PARAM].getValue();
+		engineCoreParams[engineIndex].probability = rack::clamp(probabilityValue + probabilityCv, 0.f, 1.f);
+		// Offset
+		float offsetCvVoltage = inputs[OFFSET_CV_INPUT].getVoltage();
+		int offsetCv = static_cast<int>(std::round(offsetCvVoltage * 7.f * 0.1f));
+		int offsetValue = static_cast<int>(params[OFFSET_PARAM].getValue());
+		engineCoreParams[engineIndex].offset = rack::clamp(offsetValue + offsetCv, 0, 7);
 
-		float probabilityCv = inputs[PROBABILITY_CV_INPUT].getVoltage() * 0.1f;
-		engineCoreParams[engineIndex].probability = rack::clamp(params[PROBABILITY_PARAM].getValue() + probabilityCv, 0.f, 1.f);
-
-		int offsetCv = std::round(inputs[OFFSET_CV_INPUT].getVoltage() * 0.7f);
-		int offsetParam = std::round(params[OFFSET_PARAM].getValue());
-		engineCoreParams[engineIndex].offset = rack::clamp(offsetParam + offsetCv, 0, 7);
-
-		// Menu and mode buttons
+		// Menu
 		if (menuTrigger.process(params[MENU_PARAM].getValue()))
 			menuActive = !menuActive;
-
+		// Mode
 		if (modeTrigger.process(params[MODE_PARAM].getValue())) {
 			if (menuActive)
 				pageCounter++;
 			else
 				engineMenuParams[engineSelect].menuDelta[EngineMenuParams::MODE_DELTA] += 1;
 		}
-
 		pageNumber = pageCounter % NUM_MENU_PAGES;
 		if (pageNumber < 0)
 			pageNumber += NUM_MENU_PAGES;
 
-		// Encoder
+		// Select encoder
 		engineCoreParams[engineIndex].miniMenuChanged = false;
-		float encoderDifference = params[SELECT_PARAM].getValue() - prevEncoderValue;
-		int delta = std::round(encoderDifference / ENCODER_INDENT);
+		float selectValue = params[SELECT_PARAM].getValue();
+		float selectDifference =  selectValue - prevEncoderValue;
+		int delta = std::round(selectDifference / ENCODER_INDENT);
 
 		if ((delta != 0) || encoderReset) {
 			prevEncoderValue += delta * ENCODER_INDENT;
@@ -621,15 +648,18 @@ struct Wolfram : Module {
 		
 		// Inject
 		int injectState = 0;
-		if (posInjectTrigger.process(inputs[INJECT_INPUT].getVoltage(), 0.1f, 2.f))
+		float injectVoltage = inputs[INJECT_INPUT].getVoltage();
+		if (posInjectTrigger.process(injectVoltage, 0.1f, 2.f))
 			injectState = 1;
-		else if (negInjectTrigger.process(inputs[INJECT_INPUT].getVoltage(), -2.f, -0.1f))
+		else if (negInjectTrigger.process(injectVoltage, -2.f, -0.1f))
 			injectState = -1;
 		engineCoreParams[engineIndex].inject = injectState;
 		
 		// OUTPUTS
-		float xCv = 0.f, yCv = 0.f; 
-		bool xBit = false, yBit = false;
+		float xCv = 0.f;
+		float yCv = 0.f;
+		bool xBit = false;
+		bool yBit = false;
 		float modeLED = 0.f;
 	
 		for (int i = 0; i < NUM_ENGINES; i++)
@@ -640,8 +670,8 @@ struct Wolfram : Module {
 		xCv = slewLimiter[0].process(xCv);
 		yCv = slewLimiter[1].process(yCv);
 
-		float xAudio = xCv - 0.5;
-		float yAudio = yCv - 0.5;
+		float xAudio = xCv - 0.5f;
+		float yAudio = yCv - 0.5f;
 		dcFilter[0].process(xAudio);
 		dcFilter[1].process(yAudio);
 		xAudio = dcFilter[0].highpass();
@@ -650,15 +680,16 @@ struct Wolfram : Module {
 		// CV outputs - 0V to 10V or -5V to 5V in Audio Rate Mode (10Vpp)
 		float xOut = audioRateMode ? xAudio : xCv;
 		float yOut = audioRateMode ? yAudio : yCv;
-		xOut = xOut * params[X_SCALE_PARAM].getValue() * 10.f;
-		yOut = yOut * params[Y_SCALE_PARAM].getValue() * 10.f;
+		float xScaleValue = params[X_SCALE_PARAM].getValue();
+		float yScaleValue = params[Y_SCALE_PARAM].getValue();
+		xOut = xOut * xScaleValue * 10.f;
+		yOut = yOut * yScaleValue * 10.f;
 		outputs[X_OUTPUT].setVoltage(xOut);
 		outputs[Y_OUTPUT].setVoltage(yOut);
 
 		// Pulse outputs (0V to 10V)
 		if (xBit)
 			xPulse.trigger(audioRateMode ? args.sampleTime : 1e-3f);
-
 		if (yBit)
 			yPulse.trigger(audioRateMode ? args.sampleTime : 1e-3f);
 
@@ -669,8 +700,8 @@ struct Wolfram : Module {
 
 		// LIGHTS
 		lights[MODE_LIGHT].setBrightnessSmooth(modeLED, args.sampleTime);
-		lights[X_LIGHT].setBrightness(xOut * 0.1);
-		lights[Y_LIGHT].setBrightness(yOut * 0.1);
+		lights[X_LIGHT].setBrightness(xOut * 0.1f);
+		lights[Y_LIGHT].setBrightness(yOut * 0.1f);
 		lights[X_PULSE_LIGHT].setBrightnessSmooth(xGate, args.sampleTime);
 		lights[Y_PULSE_LIGHT].setBrightnessSmooth(yGate, args.sampleTime);
 		

@@ -165,11 +165,12 @@ void LifeEngine::process(const EngineCoreParams& p,
 	bool* xPulse, bool* yPulse,
 	float* modeLED) {
 
-	setRuleCv(p.ruleCv);
-
 	bool refreshDisplay = p.step;
 	bool syncStep = p.sync && p.step;
 	generate = rack::random::get<float>() < p.probability;
+
+	if (!p.sync || (syncStep))
+		setRuleCv(p.ruleCv);
 
 	bool injectOccured = (p.inject != 0);
 	if (injectOccured && p.sync)
