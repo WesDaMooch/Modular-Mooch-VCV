@@ -1,10 +1,10 @@
-// baseEngine.hpp
+// algoEngine.hpp
 // Part of the Modular Mooch Wolfram module (VCV Rack)
 //
 // GitHub: https://github.com/WesDaMooch/Modular-Mooch-VCV
 // 
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
-// SPDX-License-Identifier: GPL-3.0-or-later
+// License: GPL-3.0-or-later
 
 #pragma once
 #include "../plugin.hpp"
@@ -12,9 +12,12 @@
 #include <cstdint>
 
 // TODO:
-// - process() should be defined in algoEngine,
+// - process() should be defined in algoEngine or in Wolfram module <- a better idea,
 // with functions such as generate(), inject() ect defined in child algoithms.
-// May require a renderOuputs(references to outs and modeLed) function.
+// process() can just give output voltages, pulses, and modeLED.
+// 
+// The current reset() may need renameing initialize(),
+// and could be called in constuctor to remove repeated code
 
 static constexpr int MAX_SEQUENCE_LENGTH = 64;
 
@@ -49,15 +52,9 @@ struct EngineCoreParams {
 
 struct EngineToUiLayer {
 	// Used to take a snapshot of the engine's current values,
-	// to be safely read by the UI and patch saver
-	std::array<uint64_t, MAX_SEQUENCE_LENGTH> matrixBuffer{};
+	// to be safely read by the UI.
 	uint64_t display = 0;
-	uint64_t displaySave = 0;
-	int readHead = 0;
-	int writeHead = 0;
-	int ruleSelect = 0;
-	int seed = 0;
-	int mode = 0;
+	int seed = 0;	// Used for Wolf seed display
 	char engineLabel[5]{};
 	char ruleActiveLabel[5]{};
 	char ruleSelectLabel[5]{};

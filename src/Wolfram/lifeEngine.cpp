@@ -4,7 +4,7 @@
 // GitHub: https://github.com/WesDaMooch/Modular-Mooch-VCV
 // 
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
-// SPDX-License-Identifier: GPL-3.0-or-later
+// License: GPL-3.0-or-later
 
 #include "lifeEngine.hpp"
 
@@ -165,11 +165,12 @@ void LifeEngine::process(const EngineCoreParams& p,
 	bool* xPulse, bool* yPulse,
 	float* modeLED) {
 
-	setRuleCv(p.ruleCv);
-
 	bool refreshDisplay = p.step;
 	bool syncStep = p.sync && p.step;
 	generate = rack::random::get<float>() < p.probability;
+
+	if (!p.sync || (syncStep))
+		setRuleCv(p.ruleCv);
 
 	bool injectOccured = (p.inject != 0);
 	if (injectOccured && p.sync)

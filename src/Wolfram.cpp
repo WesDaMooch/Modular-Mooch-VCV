@@ -4,13 +4,15 @@
 // GitHub: https://github.com/WesDaMooch/Modular-Mooch-VCV
 // 
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
-// SPDX-License-Identifier: GPL-3.0-or-later
+// License: GPL-3.0-or-later
 //
 // TSKVFZSIFXEOZSVEDMJLTLTHBEDGGNDZTXOVELCGOHRIEXENGKTSGX
 // UYEPQIOENITZSWXZOOLSSZNALTNNKKJMEASGIYISNGAZSULJGFTFLC
 // LXOAVSSKUVAMYEUYOUEZKMAYJIWVRGLAIYMEOUKVGPAMYSMLTMDRNZ
 // ZLJEGOAOEXGRBEEFLKEXKPZJIUHEIQOIEJYALXMZLXIVWWJEDLTHFO
 // PTSBNPBISPPPWGOXKRPEAESROYZLFSAAALOQZLBKSGKMEX
+
+
 
 
 // PLANNED UPDATES:
@@ -21,6 +23,7 @@
 // - Replace Slew menu page with FX page.
 // here an effect can be selected that is applied to the output,
 // the amount of effect that is applied is contolled by the Scale params.
+// See Audible Instruments Macro Oscillator 2 for multi-purpose knobs with dynamic tool tips.
 // Effects:
 // GAIN - (0 - 10Vpp).
 // RISE - Slew rise (left = exponencial, right = linear).
@@ -40,15 +43,23 @@
 // New algos!
 // A true Oscillator mode could use the algos to generate wavetables.
 
+
+
+
 #include "Wolfram/algoEngine.hpp"
 #include "Wolfram/wolfEngine.hpp"
 #include "Wolfram/lifeEngine.hpp"
-#include "Wolfram/ui.hpp"
 #include <string>
 #include <atomic>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <inttypes.h>
 
 static constexpr int NUM_ENGINES = 2;
 static constexpr int NUM_MENU_PAGES = 4;
+static constexpr int NUM_DISPLAY_STYLES = 5;
+static constexpr int NUM_CELL_STYLES = 2;
 
 class SlewLimiter {
 public:
@@ -65,7 +76,6 @@ public:
 	}
 
 	float process(float x) {
-		// TODO: Could pass x as reference.
 		y += rack::clamp(x - y, -slew, slew);
 		return y;
 	}
@@ -117,17 +127,18 @@ struct Wolfram : Module {
 		// Custom behaviour to display rule when hovering over Select encoder 
 		std::string getDisplayValueString() override {
 			std::string defaultString = "30";
-
-			auto* m = dynamic_cast<Wolfram*>(module);
+			auto* m = static_cast<Wolfram*>(module);
 			if (!m)
+				return defaultString;
+
+			EngineToUiLayer* engineLayer = m->engineToUiLayerPtr.load(std::memory_order_acquire);
+			if (!engineLayer)
 				return defaultString;
 
 			bool engineModulation = m->engineModulation;
 			bool ruleModulation = m->ruleModulation;
 			int engineSelect = m->engineSelect;
 			int engineIndex = m->engineIndex;
-
-			EngineToUiLayer* engineLayer = m->engineToUiLayerPtr.load(std::memory_order_acquire);
 
 			std::string ruleSelectString = std::string(engineLayer[engineSelect].ruleSelectLabel);
 			ruleSelectString.erase(0, ruleSelectString.find_first_not_of(" "));
@@ -148,7 +159,7 @@ struct Wolfram : Module {
 	struct LengthParamQuantity : ParamQuantity {
 		// Custom behaviour to display sequence length when hovering over Length knob
 		float getDisplayValue() override {
-			auto* m = dynamic_cast<Wolfram*>(module);
+			auto* m = static_cast<Wolfram*>(module);
 			return m ? static_cast<float>(m->sequenceLength) : 8.f;
 		}
 		
@@ -168,7 +179,7 @@ struct Wolfram : Module {
 	int engineIndex = 0;
 
 	// UI
-	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512;
+	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512; // TODO: needs updating onSamplerateChange.
 	static constexpr float MINI_MENU_DISPLAY_TIME = 0.75f;
 	std::array<EngineToUiLayer, NUM_ENGINES> engineToUiLayerA{};
 	std::array<EngineToUiLayer, NUM_ENGINES> engineToUiLayerB{};
@@ -179,6 +190,7 @@ struct Wolfram : Module {
 	int displayStyleIndex = 0;
 	int cellStyleIndex = 0;
 	bool miniMenuActive = false;
+	bool uiFlip = false;
 
 	// Select encoder
 	static constexpr float ENCODER_INDENT = 1.f / 30.f;
@@ -186,7 +198,10 @@ struct Wolfram : Module {
 	bool encoderReset = false;
 
 	// Parameters
-	std::array<size_t, 9> sequenceLengths { 2, 3, 4, 6, 8, 12, 16, 32, 64 };
+	static constexpr int NUM_SEQUENCE_LENGTHS = 9;
+	std::array<size_t, NUM_SEQUENCE_LENGTHS> sequenceLengths { 
+		2, 3, 4, 6, 8, 12, 16, 32, 64 
+	};
 	size_t sequenceLength = 8;
 	int slewValue = 0;
 	bool sync = false;
@@ -243,45 +258,27 @@ struct Wolfram : Module {
 		onSampleRateChange();
 	}
 
-	bool checkEngineIsNull(int index) {
-		if (engine[index] == nullptr) {
-			DEBUG("error: engine[%d] is NULL (ptr=%p)", index, (void*)engine[index]);
-			return true;
-		}
-		return false;
-	}
-
 	void setEngine(int newEngineSelect, float newEngineCv = 0.f) {
 		engineSelect = rack::clamp(newEngineSelect, 0, NUM_ENGINES - 1);
-		int engineCv = std::round(newEngineCv * (NUM_ENGINES - 1));
+		int engineCv = rack::clamp(
+			static_cast<int>(std::round(newEngineCv * (NUM_ENGINES - 1))),
+			0, NUM_ENGINES - 1
+		);
 		engineIndex = engineModulation ? engineCv : engineSelect;
 	}
 
 	void updateEngineToUiLayer() {
-		static bool flip = false;
-		EngineToUiLayer* writeState = flip ? engineToUiLayerA.data() : engineToUiLayerB.data();
-		flip = !flip;
-
+		uiFlip = !uiFlip;
+		EngineToUiLayer* writeState = uiFlip ? engineToUiLayerA.data() : engineToUiLayerB.data();
+		
 		for (int i = 0; i < NUM_ENGINES; i++) {
-			if (checkEngineIsNull(i))
-				continue;
-			
-			for (int j = 0; j < MAX_SEQUENCE_LENGTH; j++)
-				writeState[i].matrixBuffer[j] = engine[i]->getBufferFrame(j);
-
 			writeState[i].display = engine[i]->getBufferFrame(0, true);
-			writeState[i].displaySave = engine[i]->getBufferFrame(0, false, true);
-			writeState[i].readHead = engine[i]->getReadHead();
-			writeState[i].writeHead = engine[i]->getWriteHead();
-			writeState[i].ruleSelect = engine[i]->getRuleSelect();
 			writeState[i].seed = engine[i]->getSeed();
-			writeState[i].mode = engine[i]->getMode();
 			engine[i]->getEngineLabel(writeState[i].engineLabel);
 			engine[i]->getRuleActiveLabel(writeState[i].ruleActiveLabel);
 			engine[i]->getRuleSelectLabel(writeState[i].ruleSelectLabel);
 			engine[i]->getSeedLabel(writeState[i].seedLabel);
 			engine[i]->getModeLabel(writeState[i].modeLabel);
-			
 		}
 		engineToUiLayerPtr.store(writeState, std::memory_order_release);
 	}
@@ -322,21 +319,52 @@ struct Wolfram : Module {
 		setSlew(0);
 		setEngine(0);
 		
-		for (int i = 0; i < NUM_ENGINES; i++) {
-			if (checkEngineIsNull(i))
-				continue;
+		for (int i = 0; i < NUM_ENGINES; i++)
 			engine[i]->reset();
-		}
 		
 		displayStyleIndex = 0;
 		cellStyleIndex = 0;
 	}
+
+	// Whhhat, pretty cool way of doing things
+	static std::string packUint64Array(const uint64_t* data, size_t count) {
+		// Pack buffer for saveing
+		std::string out;
+		out.reserve(count * 16);
+
+		char buf[17] = {};
+
+		for (size_t i = 0; i < count; i++) {
+			snprintf(buf, sizeof(buf), "%016" PRIx64, data[i]);
+			out.append(buf);
+		}
+
+		return out;
+	}
+
+	static void unpackUint64Array(const char* str, uint64_t* data, size_t count) {
+		// Unpack string for buffer loading
+		if (!str || !data)
+			return;
+
+		size_t expected = count * 16;
+		size_t len = std::strlen(str);
+
+		if (len != expected) {
+			std::memset(data, 0, count * sizeof(uint64_t));
+			return;
+		}
+
+		char buf[17] = {};
+		buf[16] = '\0';
+
+		for (size_t i = 0; i < count; ++i) {
+			std::memcpy(buf, str + (i * 16), 16);
+			data[i] = std::strtoull(buf, nullptr, 16);
+		}
+	}
 	
 	json_t* dataToJson() override {
-		// Engine buffers & display use uint64_t, yet the patch json uses 'int'.
-		// There seems to be no issue at the moment with this conflict.
-		// TODO: Could the 64-bit buffer int by encoded as a string?
-
 		json_t* rootJ = json_object();
 
 		// Save sequencer settings
@@ -351,9 +379,6 @@ struct Wolfram : Module {
 		json_object_set_new(rootJ, "displayStyle", json_integer(displayStyleIndex));
 		json_object_set_new(rootJ, "cellStyle", json_integer(cellStyleIndex));
 
-		// Save engine specifics
-		EngineToUiLayer* engineLayer = engineToUiLayerPtr.load(std::memory_order_acquire);
-
 		json_t* readHeadsJ = json_array();
 		json_t* writeHeadsJ = json_array();
 		json_t* rulesJ = json_array();
@@ -363,17 +388,24 @@ struct Wolfram : Module {
 		json_t* buffersJ = json_array();
 
 		for (int i = 0; i < NUM_ENGINES; i++) {
-			json_array_append_new(rulesJ, json_integer(engineLayer[i].ruleSelect));
-			json_array_append_new(seedsJ, json_integer(engineLayer[i].seed));
-			json_array_append_new(modesJ, json_integer(engineLayer[i].mode));
-			json_array_append_new(readHeadsJ, json_integer(engineLayer[i].readHead));
-			json_array_append_new(writeHeadsJ, json_integer(engineLayer[i].writeHead));
-			json_array_append_new(displaysJ, json_integer(engineLayer[i].displaySave));
+			json_array_append_new(rulesJ, json_integer(engine[i]->getRuleSelect()));
+			json_array_append_new(seedsJ, json_integer(engine[i]->getSeed()));
+			json_array_append_new(modesJ, json_integer(engine[i]->getMode()));
+			json_array_append_new(readHeadsJ, json_integer(engine[i]->getReadHead()));
+			json_array_append_new(writeHeadsJ, json_integer(engine[i]->getWriteHead()));
 
-			json_t* rowJ = json_array();
+			// Save display frame
+			uint64_t matrixDisplay = engine[i]->getBufferFrame(0, false, true);
+			char displayStr[17];
+			snprintf(displayStr, sizeof(displayStr), "%016" PRIx64, matrixDisplay);
+			json_array_append_new(displaysJ, json_string(displayStr));
+
+			// Pack entire buffer into one string
+			uint64_t frames[MAX_SEQUENCE_LENGTH];
 			for (int j = 0; j < MAX_SEQUENCE_LENGTH; j++)
-				json_array_append_new(rowJ, json_integer(engineLayer[i].matrixBuffer[j]));
-			json_array_append_new(buffersJ, rowJ);
+				frames[j] = engine[i]->getBufferFrame(j);
+			std::string packed = packUint64Array(frames, MAX_SEQUENCE_LENGTH);
+			json_array_append_new(buffersJ, json_string(packed.c_str()));
 		}
 		
 		json_object_set_new(rootJ, "readHeads", readHeadsJ);
@@ -424,9 +456,6 @@ struct Wolfram : Module {
 		json_t* displaysJ = json_object_get(rootJ, "displays");
 
 		for (int i = 0; i < NUM_ENGINES; i++) {
-			if (checkEngineIsNull(i))
-				continue;
-
 			if (readHeadsJ) {
 				json_t* valueJ = json_array_get(readHeadsJ, i);
 
@@ -457,45 +486,46 @@ struct Wolfram : Module {
 				if (valueJ)
 					engine[i]->setMode(json_integer_value(valueJ));
 			}
+
+			// Display frame
 			if (displaysJ) {
-				json_t* valueJ = json_array_get(displaysJ, i);
-
-				if (valueJ)
-					engine[i]->setBufferFrame(static_cast<uint64_t>(json_integer_value(valueJ)), 0, true);
-			}
-
-			// Load Buffers
-			if (buffersJ) {
-				json_t* rowJ = json_array_get(buffersJ, i);
-
-				if (rowJ) {
-					for (int j = 0; j < MAX_SEQUENCE_LENGTH; j++) {
-						json_t* valueJ = json_array_get(rowJ, j);
-
-						if (valueJ)
-							engine[i]->setBufferFrame(static_cast<uint64_t>(json_integer_value(valueJ)), j);
-					}
+				json_t* v = json_array_get(displaysJ, i);
+				if (json_is_string(v)) {
+					uint64_t matrixDisplay = strtoull(json_string_value(v), nullptr, 16);
+					engine[i]->setBufferFrame(matrixDisplay, 0, true);
 				}
 			}
+
+			// Buffer frames
+			if (buffersJ) {
+				json_t* v = json_array_get(buffersJ, i);
+
+				if (json_is_string(v)) {
+					uint64_t matrixFrames[MAX_SEQUENCE_LENGTH];
+
+					unpackUint64Array(json_string_value(v), matrixFrames, MAX_SEQUENCE_LENGTH);
+
+					for (int j = 0; j < MAX_SEQUENCE_LENGTH; j++)
+						engine[i]->setBufferFrame(matrixFrames[j], j);
+				}	
+			}
+
 			engine[i]->updateDisplay(false);
 		}
 	}
 	
 	void process(const ProcessArgs& args) override {
-		for (int i = 0; i < NUM_ENGINES; i++) {
-			if (checkEngineIsNull(i)) {
-				outputs[X_OUTPUT].setVoltage(0.f);
-				outputs[Y_OUTPUT].setVoltage(0.f);
-				outputs[X_PULSE_OUTPUT].setVoltage(0.f);
-				outputs[Y_PULSE_OUTPUT].setVoltage(0.f);
-				lights[MODE_LIGHT].setBrightness(0.f);
-				lights[X_LIGHT].setBrightness(0.f);
-				lights[Y_LIGHT].setBrightness(0.f);
-				lights[X_PULSE_LIGHT].setBrightness(0.f);
-				lights[Y_PULSE_LIGHT].setBrightness(0.f);
-				return;
-			}
+		// TODO: used AlgoEngine* activeEngine = engine[engineIndex],
+		// same with engineMenuParams maybe.
+		// TODO: currently encoderReset and miniMenuChange are used for the same seed reset,
+		// they need to be seperated so that an encoder reset can push a seed when the engine is being modulated.
+
+		/* TODO: could be a better way to clear menu parameter's delta and reset.
+		for (auto& menu : engineMenuParams) {
+			std::fill(std::begin(menu.menuDelta), std::end(menu.menuDelta), 0);
+			std::fill(std::begin(menu.menuReset), std::end(menu.menuReset), false);
 		}
+		*/
 
 		for (int i = 0; i < NUM_ENGINES; i++) {
 			// Clear menu parameter's delta and reset
@@ -511,51 +541,61 @@ struct Wolfram : Module {
 		if (audioRateMode)	// Zero crossing
 			step = (stepVoltage > 0.f && prevStepVoltage <= 0.f) || (stepVoltage < 0.f && prevStepVoltage >= 0.f);
 		else				// Pulse trigger	
-			step = trigTrigger.process(inputs[TRIG_INPUT].getVoltage(), 0.1f, 2.f);
+			step = trigTrigger.process(stepVoltage, 0.1f, 2.f);
 		prevStepVoltage = stepVoltage;
-
+		// Engine
 		engineModulation = inputs[ENGINE_CV_INPUT].isConnected();
-		float newEngineCv = rack::clamp(inputs[ENGINE_CV_INPUT].getVoltage() * 0.1f, -1.f, 1.f);
-		if (sync && step)
+		float engineCvVoltage = inputs[ENGINE_CV_INPUT].getVoltage();
+		float newEngineCv = engineCvVoltage * 0.1f;
+		if(sync && step)
 			syncedEngineCv = newEngineCv;
 		setEngine(engineSelect, sync ? syncedEngineCv : newEngineCv);
 
 		engineCoreParams[engineIndex].step = step;
+		// Rule 
 		ruleModulation = inputs[RULE_CV_INPUT].isConnected();
-		engineCoreParams[engineIndex].ruleCv = rack::clamp(inputs[RULE_CV_INPUT].getVoltage() * 0.1f, -1.f, 1.f);
-		engineCoreParams[engineIndex].reset = resetTrigger.process(inputs[RESET_INPUT].getVoltage(), 0.1f, 2.f);
+		float ruleCvVoltage = inputs[RULE_CV_INPUT].getVoltage();
+		engineCoreParams[engineIndex].ruleCv = rack::clamp(ruleCvVoltage * 0.1f, -1.f, 1.f);
+		// Reset
+		float resetVoltage = inputs[RESET_INPUT].getVoltage();
+		engineCoreParams[engineIndex].reset = resetTrigger.process(resetVoltage, 0.1f, 2.f);
+		// Sync
 		engineCoreParams[engineIndex].sync = sync;
-
-		size_t lengthIndex = rack::clamp(static_cast<int>(params[LENGTH_PARAM].getValue()), 0, 8);
+		// Length
+		int lengthValue = static_cast<int>(params[LENGTH_PARAM].getValue());
+		size_t lengthIndex = rack::clamp(lengthValue, 0, NUM_SEQUENCE_LENGTHS - 1);
 		sequenceLength = sequenceLengths[lengthIndex];
 		engineCoreParams[engineIndex].length = sequenceLength;
+		// Probability
+		float probabilityCvVoltage = inputs[PROBABILITY_CV_INPUT].getVoltage();
+		float probabilityCv = probabilityCvVoltage * 0.1f;
+		float probabilityValue = params[PROBABILITY_PARAM].getValue();
+		engineCoreParams[engineIndex].probability = rack::clamp(probabilityValue + probabilityCv, 0.f, 1.f);
+		// Offset
+		float offsetCvVoltage = inputs[OFFSET_CV_INPUT].getVoltage();
+		int offsetCv = static_cast<int>(std::round(offsetCvVoltage * 7.f * 0.1f));
+		int offsetValue = static_cast<int>(params[OFFSET_PARAM].getValue());
+		engineCoreParams[engineIndex].offset = rack::clamp(offsetValue + offsetCv, 0, 7);
 
-		float probabilityCv = inputs[PROBABILITY_CV_INPUT].getVoltage() * 0.1f;
-		engineCoreParams[engineIndex].probability = rack::clamp(params[PROBABILITY_PARAM].getValue() + probabilityCv, 0.f, 1.f);
-
-		int offsetCv = std::round(inputs[OFFSET_CV_INPUT].getVoltage() * 0.7f);
-		int offsetParam = std::round(params[OFFSET_PARAM].getValue());
-		engineCoreParams[engineIndex].offset = rack::clamp(offsetParam + offsetCv, 0, 7);
-
-		// Menu and mode buttons
+		// Menu
 		if (menuTrigger.process(params[MENU_PARAM].getValue()))
 			menuActive = !menuActive;
-
+		// Mode
 		if (modeTrigger.process(params[MODE_PARAM].getValue())) {
 			if (menuActive)
 				pageCounter++;
 			else
 				engineMenuParams[engineSelect].menuDelta[EngineMenuParams::MODE_DELTA] += 1;
 		}
-
 		pageNumber = pageCounter % NUM_MENU_PAGES;
 		if (pageNumber < 0)
 			pageNumber += NUM_MENU_PAGES;
 
-		// Encoder
+		// Select encoder
 		engineCoreParams[engineIndex].miniMenuChanged = false;
-		float encoderDifference = params[SELECT_PARAM].getValue() - prevEncoderValue;
-		int delta = std::round(encoderDifference / ENCODER_INDENT);
+		float selectValue = params[SELECT_PARAM].getValue();
+		float selectDifference =  selectValue - prevEncoderValue;
+		int delta = std::round(selectDifference / ENCODER_INDENT);
 
 		if ((delta != 0) || encoderReset) {
 			prevEncoderValue += delta * ENCODER_INDENT;
@@ -608,14 +648,15 @@ struct Wolfram : Module {
 		
 		// Inject
 		int injectState = 0;
-		if (posInjectTrigger.process(inputs[INJECT_INPUT].getVoltage(), 0.1f, 2.f))
+		float injectVoltage = inputs[INJECT_INPUT].getVoltage();
+		if (posInjectTrigger.process(injectVoltage, 0.1f, 2.f))
 			injectState = 1;
-		else if (negInjectTrigger.process(inputs[INJECT_INPUT].getVoltage(), -2.f, -0.1f))
+		else if (negInjectTrigger.process(injectVoltage, -2.f, -0.1f))
 			injectState = -1;
 		engineCoreParams[engineIndex].inject = injectState;
 		
 		// OUTPUTS
-		float xCv = 0.f; 
+		float xCv = 0.f;
 		float yCv = 0.f;
 		bool xBit = false;
 		bool yBit = false;
@@ -629,8 +670,8 @@ struct Wolfram : Module {
 		xCv = slewLimiter[0].process(xCv);
 		yCv = slewLimiter[1].process(yCv);
 
-		float xAudio = xCv - 0.5;
-		float yAudio = yCv - 0.5;
+		float xAudio = xCv - 0.5f;
+		float yAudio = yCv - 0.5f;
 		dcFilter[0].process(xAudio);
 		dcFilter[1].process(yAudio);
 		xAudio = dcFilter[0].highpass();
@@ -639,15 +680,16 @@ struct Wolfram : Module {
 		// CV outputs - 0V to 10V or -5V to 5V in Audio Rate Mode (10Vpp)
 		float xOut = audioRateMode ? xAudio : xCv;
 		float yOut = audioRateMode ? yAudio : yCv;
-		xOut = xOut * params[X_SCALE_PARAM].getValue() * 10.f;
-		yOut = yOut * params[Y_SCALE_PARAM].getValue() * 10.f;
+		float xScaleValue = params[X_SCALE_PARAM].getValue();
+		float yScaleValue = params[Y_SCALE_PARAM].getValue();
+		xOut = xOut * xScaleValue * 10.f;
+		yOut = yOut * yScaleValue * 10.f;
 		outputs[X_OUTPUT].setVoltage(xOut);
 		outputs[Y_OUTPUT].setVoltage(yOut);
 
 		// Pulse outputs (0V to 10V)
 		if (xBit)
 			xPulse.trigger(audioRateMode ? args.sampleTime : 1e-3f);
-
 		if (yBit)
 			yPulse.trigger(audioRateMode ? args.sampleTime : 1e-3f);
 
@@ -658,8 +700,8 @@ struct Wolfram : Module {
 
 		// LIGHTS
 		lights[MODE_LIGHT].setBrightnessSmooth(modeLED, args.sampleTime);
-		lights[X_LIGHT].setBrightness(xOut * 0.1);
-		lights[Y_LIGHT].setBrightness(yOut * 0.1);
+		lights[X_LIGHT].setBrightness(xOut * 0.1f);
+		lights[Y_LIGHT].setBrightness(yOut * 0.1f);
 		lights[X_PULSE_LIGHT].setBrightnessSmooth(xGate, args.sampleTime);
 		lights[Y_PULSE_LIGHT].setBrightnessSmooth(yGate, args.sampleTime);
 		
@@ -673,77 +715,228 @@ struct Wolfram : Module {
 };
 
 struct Display : TransparentWidget {
-	Wolfram* module;
-	UI ui;
+	// TODO: see ZZC Clock for glowing display.
+	
+	Wolfram* module = nullptr;
+
+	static constexpr int NUM_COLS = 8;
+	static constexpr int NUM_ROWS = 8;
+	static constexpr int NUM_CELLS = NUM_COLS * NUM_ROWS;
+	static constexpr int NUM_TEXT_CHARS = 4;
+	// General
+	static constexpr float widgetSize = 94.49f; //mm2px(32.f);
+	static constexpr float padding = 1.f;
+	// Cells
+	static constexpr float circleCellSize = 5.f;
+	static constexpr float cellPadding = ((widgetSize - (padding * 2.f)) / NUM_COLS);
+	static constexpr float circleCellPadding = (cellPadding * 0.5f) + padding;
+
+	static constexpr float roundedSquareCellSize = 10.f;
+	static constexpr float roundedSquareCellBevel = 1.f;
+	// Text
+	static constexpr float fontSize = cellPadding * 2.f;
+	static constexpr float textBgSize = fontSize - 2.f;
+	static constexpr float textBgPadding = (fontSize * 0.5f) - (textBgSize * 0.5f) + padding;
+	static constexpr float textBgBevel = 3.f;
+	// Wolf
+	static constexpr float wolfSeedSize = (fontSize * 0.5f) - 2.f;
+	static constexpr float wolfSeedLineWidth = 0.5f;
+	static constexpr float wolfSeedBevel = 3.f;
+
+	int displayStyleIndex = 0;
+	int cellStyleIndex = 0;
 
 	std::shared_ptr<Font> font;
-	std::string fontPath;
 
-	int cols = 8;
-	int rows = 8;
-	float padding = 1.f;
-	float cellSize = 5.f;
+	std::array<Vec, NUM_CELLS> cellCirclePos{};
+	std::array<Vec, NUM_CELLS> cellRoundedSquarePos{};
+	std::array<Vec, NUM_TEXT_CHARS> textPos{};
+	std::array<Vec, 16> textBgPos{};
+	std::array<rack::math::Vec, NUM_COLS> wolfSeedPos{};
 
-	float cellPadding = 0;
-	float widgetSize = 0;
-	float fontSize = 0;
+	// Display styles
+	std::array<std::array<NVGcolor, 3>, NUM_DISPLAY_STYLES> displayStyle{ {
+		{ nvgRGB(228, 7, 7),		nvgRGB(78, 12, 9),		nvgRGB(58, 16, 19) },		// Redrick
+		{ nvgRGB(205, 254, 254),	nvgRGB(39, 70, 153),	nvgRGB(37, 59, 99) },		// Oled
+		{ SCHEME_YELLOW,			SCHEME_DARK_GRAY,		SCHEME_DARK_GRAY },			// Rack  
+		{ nvgRGB(210, 255, 0),		nvgRGB(42, 47, 37),		nvgRGB(42, 47, 37) },		// Lamp 
+		{ nvgRGB(255, 255, 255),	nvgRGB(0, 0, 0),		nvgRGB(0, 0, 0) },			// Mono
+	} };
 
-	Display(Wolfram* m, float yPos, float w, float size) {
+	Display(Wolfram* m, float yPos, float moduleWidth) {
 		module = m;
 
-		// Wiget parameters
-		widgetSize = size;
-		float screenSize = widgetSize - (padding * 2.f);
-		fontSize = (screenSize / cols) * 2.f;
-		cellPadding = (screenSize / cols);
-
-		// Widget size
-		box.pos = Vec((w * 0.5f) - (widgetSize * 0.5f), yPos);
+		box.pos = Vec((moduleWidth * 0.5f) - (widgetSize * 0.5f), yPos);
 		box.size = Vec(widgetSize, widgetSize);
 
-		// Get font 
-		fontPath = std::string(asset::plugin(pluginInstance, "res/fonts/wolfram.otf"));
-		font = APP->window->loadFont(fontPath);
-		
-		ui.init(padding, fontSize, cellPadding);
+		// Text positions
+		for (int i = 0; i < NUM_TEXT_CHARS; i++) {
+			textPos[i].x = padding;
+			textPos[i].y = padding + (fontSize * i);
+		}
+
+		// Text background positions 
+		for (int col = 0; col < NUM_TEXT_CHARS; col++) {
+			for (int row = 0; row < NUM_TEXT_CHARS; row++) {
+				int i = row * NUM_TEXT_CHARS + col;
+				textBgPos[i].x = (fontSize * col) + textBgPadding;
+				textBgPos[i].y = (fontSize * row) + textBgPadding;
+			}
+		}
+
+		// Cell positions
+		float roundedSquareCellPadding = (cellPadding * 0.5f) - (roundedSquareCellSize * 0.5f) + padding;
+		for (int col = 0; col < NUM_COLS; col++) {
+			for (int row = 0; row < NUM_ROWS; row++) {
+				int i = row * NUM_COLS + col;
+				cellCirclePos[i].x = (cellPadding * col) + circleCellPadding;
+				cellCirclePos[i].y = (cellPadding * row) + circleCellPadding;
+				cellRoundedSquarePos[i].x = (cellPadding * col) + roundedSquareCellPadding;
+				cellRoundedSquarePos[i].y = (cellPadding * row) + roundedSquareCellPadding;
+
+			}
+		}
+
+		// Wolf seed display
+		float halfFontSize = fontSize * 0.5f;
+		float wolfSeedPadding = (halfFontSize * 0.5f) - (wolfSeedSize * 0.5f) + padding;
+		for (int col = 0; col < NUM_COLS; col++) {
+			wolfSeedPos[col].x = (halfFontSize * col) + wolfSeedPadding;
+			wolfSeedPos[col].y = (halfFontSize * 4.f) + wolfSeedPadding;
+		}
 	}
 
-	void drawDisplay(NVGcontext* vg, int layer) {
-		EngineToUiLayer* engineLayer = nullptr;
-		if (module)
-			engineLayer = module->engineToUiLayerPtr.load(std::memory_order_acquire);
+	void ensureFont() {
+		if (!font || (font->handle < 0))
+			font = APP->window->loadFont(asset::plugin(pluginInstance, "res/fonts/wolfram.ttf"));
+	}
 
-		int firstRow = 0;
-		bool menuActive = module ? module->menuActive : false;
-		bool miniMenuActive = module ? module->miniMenuActive : false;
-		int engineSelect = module ? module->engineSelect : 0;
-		int engineIndex = module ? module->engineIndex : 0;
+	void syncStyle() {
+		if (!module)
+			return;
 
-		// Set colour
-		NVGcolor colour = nvgRGB(0, 0, 0);
-		if (module) {
-			colour = (layer == 1) ?
-				ui.getForegroundColour() :
-				ui.getBackgroundColour();
+		displayStyleIndex = module->displayStyleIndex;
+		cellStyleIndex = module->cellStyleIndex;
+	}
+
+	// Getters
+	const NVGcolor& getForegroundColour() const {
+		int styleIndex = rack::clamp(displayStyleIndex, 0, NUM_DISPLAY_STYLES - 1);
+		return displayStyle[styleIndex][0];
+	}
+
+	const NVGcolor& getBackgroundColour() const {
+		int styleIndex = rack::clamp(displayStyleIndex, 0, NUM_DISPLAY_STYLES - 1);
+		return displayStyle[styleIndex][1];
+	}
+
+	const NVGcolor& getScreenColour() const {
+		int styleIndex = rack::clamp(displayStyleIndex, 0, NUM_DISPLAY_STYLES - 1);
+		return displayStyle[styleIndex][2];
+	}
+
+	void getCellPath(NVGcontext* vg, int col, int row) {
+		// Must call nvgBeginPath before and nvgFill after this function! 
+		int i = row * NUM_COLS + col;
+
+		if (cellStyleIndex == 1) {
+			// Pixel - Rounded square
+			nvgRoundedRect(vg, cellRoundedSquarePos[i].x, cellRoundedSquarePos[i].y,
+				roundedSquareCellSize, roundedSquareCellSize, roundedSquareCellBevel);
 		}
 		else {
-			colour = (layer == 1) ?
-				nvgRGB(228, 7, 7) :
-				nvgRGB(78, 12, 9);
+			// LED - Circle	
+			nvgCircle(vg, cellCirclePos[i].x, cellCirclePos[i].y, circleCellSize);
 		}
+	}
 
-		// Menu
-		if (menuActive || miniMenuActive) {
-			// Set font
-			if (!font)
-				return;
+	// Drawers
+	void drawText(NVGcontext* vg, const char* text, int row) {
+		// Draw a four character row of text
+		if ((row < 0) || (row >= NUM_TEXT_CHARS))
+			return;
 
+		nvgFillColor(vg, getForegroundColour());
+		nvgText(vg, textPos[row].x, textPos[row].y, text, nullptr);
+	}
+
+	void drawMenuText(NVGcontext* vg, 
+		const char* line1,
+		const char* line2, 
+		const char* line3, 
+		const char* line4) {
+		// Helper for drawing four lines of menu text
+		drawText(vg, line1, 0);
+		drawText(vg, line2, 1);
+		drawText(vg, line3, 2);
+		drawText(vg, line4, 3);
+	}
+
+	void drawTextBg(NVGcontext* vg, int row) {
+		// Draw one row of four square text character backgrounds
+		if ((row < 0) || (row >= NUM_TEXT_CHARS))
+			return;
+
+		nvgBeginPath(vg);
+		nvgFillColor(vg, getBackgroundColour());
+		for (int col = 0; col < NUM_TEXT_CHARS; col++) {
+			int i = row * NUM_TEXT_CHARS + col;
+			nvgRoundedRect(vg, textBgPos[i].x, textBgPos[i].y,
+				textBgSize, textBgSize, textBgBevel);
+		}
+		nvgFill(vg);
+	}
+
+	void drawWolfSeedDisplay(NVGcontext* vg, int layer, uint8_t inputSeed) {
+		if (layer == 1) {
+			// Lines
+			nvgStrokeColor(vg, getForegroundColour());
+			nvgBeginPath(vg);
+			for (int col = 0; col < NUM_COLS; col++) {
+				if ((col >= 1) && (col <= 7)) {
+					// TODO: move to constructor. 
+					nvgMoveTo(vg, wolfSeedPos[col].x - padding, wolfSeedPos[col].y - 1);
+					nvgLineTo(vg, wolfSeedPos[col].x - padding, wolfSeedPos[col].y + 1);
+
+					nvgMoveTo(vg, wolfSeedPos[col].x - padding, (wolfSeedPos[col].y + (fontSize - textBgPadding)) - 1);
+					nvgLineTo(vg, wolfSeedPos[col].x - padding, (wolfSeedPos[col].y + (fontSize - textBgPadding)) + 1);
+				}
+			}
+			nvgStrokeWidth(vg, wolfSeedLineWidth);
+			nvgStroke(vg);
+		}
+		// Display 8-bit value
+		nvgFillColor(vg, layer ? getForegroundColour() : getBackgroundColour());
+		nvgBeginPath(vg);
+		for (int col = 0; col < NUM_COLS; col++) {
+			bool seedCell = (inputSeed >> (7 - col)) & 1;
+
+			if ((layer && !seedCell) || (!layer && seedCell))
+				continue;
+
+			nvgRoundedRect(vg, wolfSeedPos[col].x, wolfSeedPos[col].y,
+				wolfSeedSize, (wolfSeedSize * 2.f) + 2.f, wolfSeedBevel);
+		}
+		nvgFill(vg);
+	}
+
+	void drawMenu(NVGcontext* vg, EngineToUiLayer* eLayer, 
+		bool menu, bool miniMenu, 
+		int &firstRow, int layer) {
+
+		if (!module || !eLayer)
+			return;
+		
+		int engineSelect = module->engineSelect;
+
+		if (layer == 1) {
+			ensureFont();
 			nvgFontSize(vg, fontSize);
 			nvgFontFaceId(vg, font->handle);
 			nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
 		}
 
-		if (menuActive) {
+		if (menu) {
 			// Main menu
 			int pageNumber = module->pageNumber;
 
@@ -751,21 +944,21 @@ struct Display : TransparentWidget {
 			if (layer == 0) {
 				if ((pageNumber == 0) && (engineSelect == 0)) {
 					// Special Wolf seed display
-					int seed = engineLayer[0].seed;
+					int seed = eLayer[0].seed;
 					if (seed == 256) {
-						ui.drawTextBg(vg, 2);
+						drawTextBg(vg, 2);
 					}
 					else {
-						ui.drawWolfSeedDisplay(vg, layer, 
+						drawWolfSeedDisplay(vg, layer,
 							static_cast<uint8_t>(seed));
 					}
-					ui.drawTextBg(vg, 0);
-					ui.drawTextBg(vg, 1);
-					ui.drawTextBg(vg, 3);
+					drawTextBg(vg, 0);
+					drawTextBg(vg, 1);
+					drawTextBg(vg, 3);
 				}
 				else {
 					for (int i = 0; i < 4; i++)
-						ui.drawTextBg(vg, i);
+						drawTextBg(vg, i);
 				}
 			}
 			// Text
@@ -779,7 +972,7 @@ struct Display : TransparentWidget {
 					char engineLabel[5]{};
 					for (int i = 0; i < 4; i++) {
 						engineLabel[i] = std::tolower(static_cast<unsigned char>(
-							engineLayer[engineSelect].engineLabel[i]));
+							eLayer[engineSelect].engineLabel[i]));
 					}
 					engineLabel[4] = '\0';
 					std::copy(engineLabel, engineLabel + 4, header);
@@ -792,27 +985,27 @@ struct Display : TransparentWidget {
 					std::copy("SEED", "SEED" + 4, title);
 					if (engineSelect == 0) {
 						// Special Wolf seed display
-						int seed = engineLayer[0].seed;
+						int seed = eLayer[0].seed;
 						if (seed == 256) {
 							std::copy("RAND", "RAND" + 4, value);
 						}
 						else {
 							std::copy("    ", "    " + 4, value);
-							ui.drawWolfSeedDisplay(vg, layer,
+							drawWolfSeedDisplay(vg, layer,
 								static_cast<uint8_t>(seed));
 						}
 					}
 					else {
-						std::copy(engineLayer[engineSelect].seedLabel,
-							engineLayer[engineSelect].seedLabel + 4, value);
+						std::copy(eLayer[engineSelect].seedLabel,
+							eLayer[engineSelect].seedLabel + 4, value);
 					}
 					break;
 				}
 				case 1: {
 					// Mode page
 					std::copy("MODE", "MODE" + 4, title);
-					std::copy(engineLayer[engineSelect].modeLabel,
-						engineLayer[engineSelect].modeLabel + 4, value);
+					std::copy(eLayer[engineSelect].modeLabel,
+						eLayer[engineSelect].modeLabel + 4, value);
 					break;
 				}
 				case 2: {
@@ -826,86 +1019,103 @@ struct Display : TransparentWidget {
 				case 3: {
 					// Algo page
 					std::copy("ALGO", "ALGO" + 4, title);
-					std::copy(engineLayer[engineSelect].engineLabel,
-						engineLayer[engineSelect].engineLabel + 4, value);
+					std::copy(eLayer[engineSelect].engineLabel,
+						eLayer[engineSelect].engineLabel + 4, value);
 					break;
 				}
 				default: { break; }
 				}
-				ui.drawMenuText(vg, header, title, value, footer);
+				drawMenuText(vg, header, title, value, footer);
 			}
-			return;
 		}
-		else if (miniMenuActive) {
+		else if (miniMenu) {
 			// Mini menu
-			firstRow = rows - 4;
+			firstRow = NUM_ROWS - 4;
 			// Text background
 			if (layer == 0) {
 				for (int i = 0; i < 2; i++)
-					ui.drawTextBg(vg, i);
+					drawTextBg(vg, i);
 			}
 			// Text
 			else if (layer == 1) {
-				ui.drawText(vg, "RULE", 0);
-				ui.drawText(vg, engineLayer[engineSelect].ruleSelectLabel, 1);
+				drawText(vg, "RULE", 0);
+				drawText(vg, eLayer[engineSelect].ruleSelectLabel, 1);
 			}
 		}
+	}
 
-		// Matrix display
+	void drawMatrix(NVGcontext* vg, EngineToUiLayer* eLayer, 
+		int firstRow, int layer) {
+
 		uint64_t matrix = 0x81C326F48FCULL;
-		if (module)
-			matrix = engineLayer[engineIndex].display;
+		if (module && eLayer) {
+			int engineIndex = module->engineIndex;
+			matrix = eLayer[engineIndex].display;
+		}
 
 		nvgBeginPath(vg);
-		nvgFillColor(vg, colour);
+		nvgFillColor(vg, layer ? getForegroundColour() : getBackgroundColour());
 
-		for (int row = firstRow; row < 8; row++) {
+		for (int row = firstRow; row < NUM_ROWS; row++) {
 			int rowInvert = 7 - row;
 
 			uint8_t rowBits = (matrix >> (rowInvert << 3)) & 0xFF;
 
 			if (layer == 0)
 				rowBits = static_cast<uint8_t>(~rowBits);
-			
-			int i = 0;
-			while (rowBits && (i < rows)) {
-				int colInvert = __builtin_ctz(static_cast<unsigned>(rowBits));
+
+			while (rowBits) {
+				int colInvert = rack::math::log2(rowBits & -rowBits);
 				rowBits &= rowBits - 1;
 
 				int col = 7 - colInvert;
 
 				if (module) {
-					ui.getCellPath(vg, col, row);
+					getCellPath(vg, col, row);
 				}
 				else {
-					// Preview window drawing
-					float pad = (cellPadding * 0.5f) + padding;
-					nvgCircle(vg, (cellPadding * col) + pad,
-						(cellPadding * row) + pad, 5.f);
+					// Preview window
+					nvgCircle(vg, (cellPadding * col) + circleCellPadding,
+						(cellPadding * row) + circleCellPadding, circleCellSize);
 				}
-				i++;
 			}
 		}
 		nvgFill(vg);
 	}
 
+	void drawDisplay(NVGcontext* vg, int layer) {
+		syncStyle();
+
+		EngineToUiLayer* engineLayer = module ?
+			module->engineToUiLayerPtr.load(std::memory_order_acquire):
+			nullptr;
+
+		int firstRow = 0;
+		bool menuActive = module ? module->menuActive : false;
+		bool miniMenuActive = module ? module->miniMenuActive : false;
+
+		// Backgound
+		if (layer == 0) {
+			nvgBeginPath(vg);
+			nvgRoundedRect(vg, padding * 0.5f, padding * 0.5f,
+				widgetSize - padding, widgetSize - padding, 2.f);
+			nvgFillColor(vg, getScreenColour());
+			nvgFill(vg);
+			// Outline
+			nvgStrokeWidth(vg, padding);
+			nvgStrokeColor(vg, nvgRGB(16, 16, 16));
+			nvgStroke(vg);
+			nvgClosePath(vg);
+		}
+
+		if (menuActive || miniMenuActive)
+			drawMenu(vg, engineLayer, menuActive, miniMenuActive, firstRow, layer);
+
+		if (!menuActive)
+			drawMatrix(vg, engineLayer, firstRow, layer);
+	}
+
 	void draw(const DrawArgs& args) override {
-		ui.displayStyleIndex = module ? module->displayStyleIndex : 0;
-		ui.cellStyleIndex = module ? module->cellStyleIndex : 0;
-
-		NVGcolor backgroundColour = ui.getScreenColour();
-
-		nvgBeginPath(args.vg);
-		nvgRoundedRect(args.vg, padding * 0.5f, padding * 0.5f,
-			widgetSize - padding, widgetSize - padding, 2.f);
-		nvgFillColor(args.vg, backgroundColour);
-		nvgFill(args.vg);
-
-		nvgStrokeWidth(args.vg, padding);
-		nvgStrokeColor(args.vg, nvgRGB(16, 16, 16));
-		nvgStroke(args.vg);
-		nvgClosePath(args.vg);
-
 		drawDisplay(args.vg, 0);
 	}
 
@@ -913,15 +1123,12 @@ struct Display : TransparentWidget {
 		if (layer != 1)
 			return;
 
-		ui.displayStyleIndex = module ? module->displayStyleIndex : 0;
-		ui.cellStyleIndex = module ? module->cellStyleIndex : 0;
 		drawDisplay(args.vg, layer);
 		Widget::drawLayer(args, layer);
 	}
 };
 
 struct WolframModuleWidget : ModuleWidget {
-
 	// Custom knobs & dials
 	struct LengthKnob : M1900hBlackKnob {
 		LengthKnob() {
@@ -945,7 +1152,7 @@ struct WolframModuleWidget : ModuleWidget {
 		}
 	};
 
-	// Custom lights from Count Modula
+	// Custom light from Count Modula
 	template <typename TBase>
 	struct LuckyLight : RectangleLight<TSvgLight<TBase>> {	// Cursed
 		LuckyLight() {
@@ -1065,7 +1272,7 @@ struct WolframModuleWidget : ModuleWidget {
 		addChild(createLightCentered<LuckyLight<RedLight>>(mm2px(Vec(41.91f, 90.225f)), module, Wolfram::Y_PULSE_LIGHT));	
 		addChild(createLightCentered<LuckyLight<RedLight>>(mm2px(Vec(53.34f, 90.225f)), module, Wolfram::Y_LIGHT));
 		
-		Display* display = new Display(module, mm2px(10.14f), box.size.x, mm2px(32.f));
+		Display* display = new Display(module, mm2px(10.14f), box.size.x);
 		addChild(display);
 	}
 	
