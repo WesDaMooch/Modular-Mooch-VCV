@@ -23,6 +23,16 @@
         "Function generator",
         "Random"
       ]
+    },
+    {
+      "slug": "Modal",
+      "name": "Modal",
+      "description": "Modal Synth",
+      "manualUrl": "",
+      "keywords": "Modal",
+      "tags": [
+        "Sequencer"
+      ]
     }
   ]
 }
