@@ -5,13 +5,18 @@
 
 #include "Modal\resonator.hpp"
 
-static constexpr int NUM_MODES = 12;
+// Ideas
+// Multiple layers of modes
+
+
+static constexpr int NUM_MODES = 6;
 
 struct Modal : Module
 {
 	enum ParamId
 	{
-		TEST_PARAM,
+		FREQ_PARAM,
+		HARMO_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId
@@ -37,18 +42,19 @@ struct Modal : Module
 	Modal() 
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
+		
+		configParam(FREQ_PARAM, 20.f, 1000.f, 440.f, "Freq", "Hz");
+		configParam(HARMO_PARAM, 0.001f, 4.f, 2.f, "Harmo");
+
 		configInput(AUDIO_INPUT, "Input");
+
 		configOutput(AUDIO_OUTPUT, "Output");
 
 		onSampleRateChange();
 
-		float fund = 110.0;
-		float harmonicRatio = 1.05;
-
 		for (int i = 0; i < NUM_MODES; i++)
 		{
 			modes.emplace_back();
-			modes.back().set(srate, fund * harmonicRatio, 1.f, 1.f);
 		}
 	}
 
@@ -77,8 +83,11 @@ struct Modal : Module
 	
 	void process(const ProcessArgs& args) override
 	{
-		float input = inputs[AUDIO_INPUT].getVoltage();
 
+		float freq = params[FREQ_PARAM].getValue();
+		float harmonicRatio = params[HARMO_PARAM].getValue();
+
+		float input = inputs[AUDIO_INPUT].getVoltage();
 		// Convert to digital audio range (-1 tp +1)
 		input *= 0.1;
 		input = rack::clamp(input, -1.f, 1.f);
@@ -86,6 +95,7 @@ struct Modal : Module
 		float output = 0.0;
 		for (int i = 0; i < NUM_MODES; i++)
 		{
+			modes[i].set(srate, freq + (freq * harmonicRatio * i), 2.f, 1.f); // slow
 			output += modes[i].proccess(input);
 		}
 
@@ -112,10 +122,13 @@ struct ModalModuleWidget : ModuleWidget
 		addChild(createWidget<ThemedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ThemedScrew>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		addChild(createWidget<ThemedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		// Parameters
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 20.f)), module, Modal::FREQ_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 40.f)), module, Modal::HARMO_PARAM));
 		// Inputs
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(7.62f, 22.14f)), module, Modal::AUDIO_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.f, 22.14f)), module, Modal::AUDIO_INPUT));
 		// Ouputs
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(7.62f, 99.852f)), module, Modal::AUDIO_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.f, 99.852f)), module, Modal::AUDIO_OUTPUT));
 	}
 	
 	void appendContextMenu(Menu* menu) override

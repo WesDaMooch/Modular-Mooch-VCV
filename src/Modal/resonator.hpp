@@ -13,6 +13,7 @@ protected:
 
 public:
 	// void setSamplerate();
+	// Phase offest?
 	void set(float fs, float frequency, float T60, float amplitude);
 	void reset();
 	float proccess(float x);
