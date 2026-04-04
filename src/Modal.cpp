@@ -1,52 +1,11 @@
 //export RACK_DIR=/home/wes-l/Rack-SDK
 
 #include "plugin.hpp"
-#include <array>
 #include <vector>
 
-#include <cmath>
+#include "Modal\resonator.hpp"
 
-static constexpr int NUM_MODES = 2;
-
-// Second Order 'Biquad' Direct Form I Filter
-class BiquadDF1
-{
-protected:
-	float b0 = 0.0;
-	float a1 = 0.0, a2 = 0.0;
-	
-	float y1 = 0.0, y2 = 0.0;
-
-public:
-
-	void set(float fs, float frequency, float T60, float amplitude)
-	{
-		float omega = 2.0 * M_PI * frequency / fs;
-
-		float decay = std::exp(-6.91 / (T60 * fs));
-
-		a1 = -2.0 * decay * std::cos(omega);
-		a2 = decay * decay;
-
-		b0 = amplitude * (1.0 - decay);
-	}
-
-	void reset()
-	{
-		y1 = 0.0;
-		y2 = 0.0;
-	}
-
-	float proccess(float x)
-	{
-		double y = b0 * x - a1 * y1 - a2 * y2;
-
-		y2 = y1;
-		y1 = y;
-
-		return y;
-	}
-};
+static constexpr int NUM_MODES = 12;
 
 struct Modal : Module
 {
@@ -73,11 +32,7 @@ struct Modal : Module
 
 	// DSP
 	int srate = 48000;
-	
-	//dsp::RCFilter mode;
-	//std::array<Filter, NUM_MODES> mode = {};
-
-	std::vector<BiquadDF1> modes;
+	std::vector<IIRResonator> modes;
 
 	Modal() 
 	{
@@ -87,13 +42,14 @@ struct Modal : Module
 
 		onSampleRateChange();
 
-		BiquadDF1 m1;
-		m1.set(srate, 440.f, 1.f, 1.f);
-		modes.push_back(m1);
+		float fund = 110.0;
+		float harmonicRatio = 1.05;
 
-		BiquadDF1 m2;
-		m2.set(srate, 444.f, 3.f, 1.f);
-		modes.push_back(m2);
+		for (int i = 0; i < NUM_MODES; i++)
+		{
+			modes.emplace_back();
+			modes.back().set(srate, fund * harmonicRatio, 1.f, 1.f);
+		}
 	}
 
 
