@@ -1,11 +1,11 @@
 #include "bessel.hpp"
 
-Bessel::Bessel()
+Drum::Drum()
 {
 	update();
 }
 
-float Bessel::calculateBessel(int order, float x) 
+float Drum::bessel(int order, float x) 
 {
 	const float EPS = 1e-8;
 	const int MAX_TERMS = 20;
@@ -54,21 +54,21 @@ float Bessel::calculateBessel(int order, float x)
 	if (x == 0.0)
 		return 0.0;
 
-	return (2.0 * (order - 1) / x) * calculateBessel(order - 1, x)
-		- calculateBessel(order - 2, x);
+	return (2.0 * (order - 1) / x) * bessel(order - 1, x)
+		- bessel(order - 2, x);
 }
 
-void Bessel::calculateWeights()
+void Drum::calculateWeights()
 {
 	for (int i = 0; i < MAX_MODES; i++)
 	{
 		const Root& r = roots[i];
-		float weight = calculateBessel(r.order, r.value * position);
+		float weight = bessel(r.order, r.value * position);
 		weights[i] = scale(weight, 0.f, 1.f, overtones, 1, damping);
 	}
 }
 
-void Bessel::calculateFreqs()
+void Drum::calculateFreqs()
 {
 	for (int i = 0; i < MAX_MODES; i++)
 	{
@@ -86,51 +86,51 @@ void Bessel::calculateFreqs()
 	*/
 }
 
-void Bessel::update()
+void Drum::update()
 {
 	calculateWeights();
 	calculateFreqs();
 }
 
 
-void Bessel::setSamplerate(int newSamplerate)
+void Drum::setSamplerate(int newSamplerate)
 {
 	samplerate = newSamplerate;
 }
 
-void Bessel::setPitch(float newFreq)
+void Drum::setPitch(float newFreq)
 {
 	fundamentalPitch = std::max(20.f, std::min(newFreq, 10000.f));
 }
 
-void Bessel::setPosition(float newPosition)
+void Drum::setPosition(float newPosition)
 {
 	position = std::max(0.f, std::min(newPosition, 1.f));
 }
 
-void Bessel::setSize(float newSize)
+void Drum::setSize(float newSize)
 {
 	size = std::max(0.0001f, std::min(newSize, 5.f));
 }
 
-void Bessel::setDamping(float newDamping)
+void Drum::setDamping(float newDamping)
 {
 	damping = std::max(0.f, std::min(newDamping, 1.f));
 }
 
-void Bessel::setOvertones(float newOvertones)
+void Drum::setOvertones(float newOvertones)
 {
 	overtones = std::max(0.f, std::min(newOvertones, 1.f));
 }
 
 
-float Bessel::getWeight(int index)
+float Drum::getWeight(int index)
 {
 	int i = std::max(0, std::min(index, MAX_MODES - 1));
 	return weights[i];
 }
 
-float Bessel::getFreq(int index)
+float Drum::getFreq(int index)
 {
 	int i = std::max(0, std::min(index, MAX_MODES - 1));
 	return freqs[i];

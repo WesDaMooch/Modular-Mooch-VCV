@@ -16,14 +16,7 @@
 // Shape
 // Harmo
 
-struct Harmoincs
-{
-
-
-	// Circular
-	// https://www.soundonsound.com/techniques/synthesizing-percussion
-	// Hard coded text
-	std::array<float, MAX_MODES> circleHarmonicRation = {
+/*
 		1.0,
 		1.59,
 		2.14,
@@ -36,45 +29,7 @@ struct Harmoincs
 		3.65,
 		4.06,
 		4.15
-	};
-	// Rectangle
-
-	// get freq (clamp input?)
-
-	// bessel
-	std::array<float, MAX_MODES> circle2 = {};
-
-
-	// string
-	std::array<float, MAX_MODES> string = {};
-
-
-	float getHarmonicRatio(int shape, int index) // float (0 - 1) harmonicModifier?
-	{
-		shape = rack::clamp(shape, 0, 1);
-		index = rack::clamp(index, 0, MAX_MODES);
-
-		switch (shape)
-		{
-		case 0:	// String
-			// Mod = string pos = amplitude changes
-			return index + 1;
-			
-		case 1: // Rectangle
-
-
-
-			return 1;
-
-		default:
-			return index;
-		}
-		
-		//index = rack::clamp(index, 0, MAX_MODES);
-		//return circleHarmonicRation[index];
-	}
-
-};
+*/
 
 struct Modal : Module
 {
@@ -103,21 +58,18 @@ struct Modal : Module
 
 	// DSP
 	int srate = 48000;
-	std::vector<IIRResonator> resonator;
-
-	Bessel bessel;
-
-	Harmoincs harmonics;
-
+	//std::vector<IIRResonator> resonator;
+	std::vector<ChamberlinSVF> resonator;
 	
+	Drum drum;
 
 	Modal() 
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameter
-		configParam(FREQ_PARAM, 20.f, 1000.f, 440.f, "Freq", "Hz");
+		configParam(FREQ_PARAM, 20.f, 1000.f, 220.f, "Freq", "Hz");
 		configParam(HARMO_PARAM, 1e-6f, 3.f, 1.f, "Harmo");
-		configParam(DECAY_PARAM, 0.f, 1.f, 0.25f, "Decay");
+		configParam(DECAY_PARAM, 0.f, 1.f, 0.5f, "Decay");
 		// Input
 		configInput(AUDIO_INPUT, "Input");
 		// Output
@@ -135,18 +87,20 @@ struct Modal : Module
 	void onSampleRateChange() override 
 	{
 		srate = APP->engine->getSampleRate();
-		bessel.setSamplerate(srate);
+		drum.setSamplerate(srate);
 	}
 
 	void onReset(const ResetEvent& e) override 
 	{
-
+		for (int i = 0; i < MAX_MODES; i++)
+		{
+			resonator[i].reset();
+		}
 	}
 	
 	json_t* dataToJson() override 
 	{
 		json_t* rootJ = json_object();
-
 		return rootJ;
 	}
 	
@@ -158,7 +112,7 @@ struct Modal : Module
 	void process(const ProcessArgs& args) override
 	{
 		// Parameters
-		//float fundimentalFreq = params[FREQ_PARAM].getValue();
+		float fundimentalFreq = params[FREQ_PARAM].getValue();
 
 		//float harmoParam = params[HARMO_PARAM].getValue();
 
@@ -166,30 +120,55 @@ struct Modal : Module
 		float decayParam = params[DECAY_PARAM].getValue();
 		float decay = decayParam * maxDecayTime;
 
+		float output = 0.f;
 		float input = inputs[AUDIO_INPUT].getVoltage();
 		// Convert to digital audio range (-1 tp +1)
 		input *= 0.1;
 		input = rack::clamp(input, -1.f, 1.f);
 
-		bessel.setPitch(220.f);
+		/*
+		drum.setPitch(fundimentalFreq);
 		//bessel.setSize(1.f);
 		//bessel.setPosition(0.3f);
 		//bessel.setDamping(0.5f);
 		//bessel.setOvertones(0.5f);
-		bessel.update();
+		drum.update();
 
-		float output = 0.0;
 		for (int i = 0; i < MAX_MODES; i++)
 		{
 			//float amplitude = 1.f;
-			float amplitude = bessel.getWeight(i);
-			float freq = bessel.getFreq(i);
+			float amplitude = drum.getWeight(i);
+			float freq = drum.getFreq(i);
 
 			resonator[i].set(srate, freq, decay, amplitude);
 			output += resonator[i].proccess(input);
 		}
 
 		output = output / (float)MAX_MODES;
+		*/
+
+		drum.setPitch(fundimentalFreq);
+		drum.setSize(3.f);
+		drum.setPosition(0.2f);
+		drum.setDamping(1.f);
+		//drum.setOvertones(0.5f);
+		drum.update();
+
+		for (int i = 0; i < MAX_MODES; i++)
+		{
+			//float amplitude = 1.f;
+			float weight = drum.getWeight(i);
+			float freq = drum.getFreq(i);
+
+			resonator[i].setCoefficients(freq, weight, srate);
+			resonator[i].process(input);
+			output += resonator[i].bandpass();
+		}
+
+		output = output / (float)MAX_MODES;
+
+		//svf.process(input);
+		//output = svf.bandpass();
 
 		// Convert to voltage range (-10 to +10)
 		output *= 10.f;

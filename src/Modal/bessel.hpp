@@ -6,7 +6,7 @@
 static constexpr int MAX_MODES = 16;
 
 // Circular Membrane 
-struct Bessel
+struct Drum
 {
 //protected:
 	struct Root
@@ -32,8 +32,8 @@ struct Bessel
 	float damping = 0.f;
 	float overtones = 0.f;
 
-	Bessel();
-	float calculateBessel(int order, float x);
+	Drum();
+	float bessel(int order, float x);
 	void calculateWeights();
 	void calculateFreqs();
 	void update();
