@@ -73,7 +73,7 @@ void Drum::calculateFreqs()
 	for (int i = 0; i < MAX_MODES; i++)
 	{
 		const Root& r = roots[i];
-		freqs[i] = std::max(20.f, std::min((r.value * fundamentalPitch) / size, samplerate * 0.25f));
+		freqs[i] = std::max(20.f, std::min((r.value * tuning) / size, samplerate * 0.25f));
 	}
 
 	/*
@@ -92,7 +92,6 @@ void Drum::update()
 	calculateFreqs();
 }
 
-
 void Drum::setSamplerate(int newSamplerate)
 {
 	samplerate = newSamplerate;
@@ -100,7 +99,7 @@ void Drum::setSamplerate(int newSamplerate)
 
 void Drum::setPitch(float newFreq)
 {
-	fundamentalPitch = std::max(20.f, std::min(newFreq, 10000.f));
+	tuning = std::max(20.f, std::min(newFreq, 10000.f));
 }
 
 void Drum::setPosition(float newPosition)
@@ -122,7 +121,6 @@ void Drum::setOvertones(float newOvertones)
 {
 	overtones = std::max(0.f, std::min(newOvertones, 1.f));
 }
-
 
 float Drum::getWeight(int index)
 {

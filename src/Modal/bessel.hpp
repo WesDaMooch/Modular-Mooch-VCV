@@ -15,7 +15,7 @@ struct Drum
 		float value;
 	};
 
-	std::array<Root, MAX_MODES> roots = { {
+	std::array<Root, 16> roots = { {
 		{0, 2.4048f}, {0, 5.5201f}, {0, 8.6537f},  {0, 11.7915f},
 		{1, 3.8317f}, {1, 7.0156f}, {1, 10.1735f}, {1, 13.3237f},
 		{2, 5.1356f}, {2, 8.4172f}, {2, 11.6198f}, {2, 14.7959f},
@@ -25,8 +25,8 @@ struct Drum
 	std::array<float, MAX_MODES> weights = {};
 	std::array<float, MAX_MODES> freqs = {};
 
-	int samplerate = 48000;
-	float fundamentalPitch = 220.f;
+	int samplerate = 44100;
+	float tuning = 220.f;
 	float size = 1.f;
 	float position = 0.3f;
 	float damping = 0.f;

@@ -19,30 +19,3 @@ public:
 	void reset();
 	float process(float x);
 };
-
-
-// in hal chamberlin book
-// chamberlin svf
-class ChamberlinSVF
-{
-protected:
-	float f1 = 0.f;
-	float q1 = 0.f;
-	
-	float d1 = 0.f;
-	float d2 = 0.f;
-
-	float h = 0.f;
-	float b = 0.f;
-	float n = 0.f;
-	float l = 0.f;
-
-public:
-	void reset();
-	void setCoefficients(float f, float q, int fs);
-	void process(float x);
-	float highpass();
-	float bandpass();
-	float notch();
-	float lowpass();
-};

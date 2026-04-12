@@ -4,6 +4,7 @@
 #include <array>
 #include <vector>
 #include "Modal\resonator.hpp"
+#include "Modal\chamberlinSVF.hpp"
 #include "Modal\bessel.hpp"
 
 // Ideas
@@ -36,8 +37,10 @@ struct Modal : Module
 	enum ParamId
 	{
 		FREQ_PARAM,
-		HARMO_PARAM,
-		DECAY_PARAM,
+		SIZE_PARAM,
+		POSITION_PARAM,
+		DAMPING_PARAM,
+		BRIGHTNESS_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId
@@ -60,6 +63,7 @@ struct Modal : Module
 	int srate = 48000;
 	//std::vector<IIRResonator> resonator;
 	std::vector<ChamberlinSVF> resonator;
+	//std::vector<dsp::BiquadFilter> resonator;
 	
 	Drum drum;
 
@@ -68,8 +72,10 @@ struct Modal : Module
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameter
 		configParam(FREQ_PARAM, 20.f, 1000.f, 220.f, "Freq", "Hz");
-		configParam(HARMO_PARAM, 1e-6f, 3.f, 1.f, "Harmo");
-		configParam(DECAY_PARAM, 0.f, 1.f, 0.5f, "Decay");
+		configParam(SIZE_PARAM, 0.f, 1.f, 0.5f, "Size");
+		configParam(POSITION_PARAM, 0.f, 1.f, 0.5f, "Position");
+		configParam(DAMPING_PARAM, 0.f, 1.f, 0.5f, "Damping");
+		configParam(BRIGHTNESS_PARAM, 0.f, 1.f, 0.5f, "Brightness");
 		// Input
 		configInput(AUDIO_INPUT, "Input");
 		// Output
@@ -111,14 +117,9 @@ struct Modal : Module
 	
 	void process(const ProcessArgs& args) override
 	{
-		// Parameters
-		float fundimentalFreq = params[FREQ_PARAM].getValue();
-
-		//float harmoParam = params[HARMO_PARAM].getValue();
-
-		float maxDecayTime = 10.f;
-		float decayParam = params[DECAY_PARAM].getValue();
-		float decay = decayParam * maxDecayTime;
+		//float maxDecayTime = 10.f;
+		//float decayParam = params[DECAY_PARAM].getValue();
+		//float decay = decayParam * maxDecayTime;
 
 		float output = 0.f;
 		float input = inputs[AUDIO_INPUT].getVoltage();
@@ -147,34 +148,36 @@ struct Modal : Module
 		output = output / (float)MAX_MODES;
 		*/
 
-		drum.setPitch(fundimentalFreq);
-		drum.setSize(3.f);
-		drum.setPosition(0.2f);
-		drum.setDamping(1.f);
-		//drum.setOvertones(0.5f);
-		drum.update();
+		drum.setPitch(params[FREQ_PARAM].getValue()); // Pitch should be size?
+		drum.setSize(params[SIZE_PARAM].getValue() * 5.f);
+		drum.setPosition(params[POSITION_PARAM].getValue());
+		drum.setDamping(params[DAMPING_PARAM].getValue());
+		drum.setOvertones(params[BRIGHTNESS_PARAM].getValue());
+		drum.update(); // slow
 
 		for (int i = 0; i < MAX_MODES; i++)
 		{
 			//float amplitude = 1.f;
 			float weight = drum.getWeight(i);
 			float freq = drum.getFreq(i);
+			float decay = 100.f;
 
-			resonator[i].setCoefficients(freq, weight, srate);
+			//float freq = params[FREQ_PARAM].getValue() * (i + 1);
+			//float weight = 20.f;
+
+			resonator[i].setCoefficients(freq, decay, srate);
 			resonator[i].process(input);
-			output += resonator[i].bandpass();
+			output += weight * resonator[i].bandpass();
+			//output += resonator[i].bandpass();
 		}
 
-		output = output / (float)MAX_MODES;
-
-		//svf.process(input);
-		//output = svf.bandpass();
+		output = output / (float)MAX_MODES;;
 
 		// Convert to voltage range (-10 to +10)
 		output *= 10.f;
 
 		outputs[AUDIO_OUTPUT].setVoltage(output);
-		//outputs[AUDIO_OUTPUT].setVoltage(bessel.getFreq(0));
+		//outputs[AUDIO_OUTPUT].setVoltage(drum.getFreq(0));
 	}
 		
 };
@@ -194,8 +197,10 @@ struct ModalModuleWidget : ModuleWidget
 		addChild(createWidget<ThemedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		// Parameters
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 20.f)), module, Modal::FREQ_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 40.f)), module, Modal::HARMO_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 60.f)), module, Modal::DECAY_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 40.f)), module, Modal::SIZE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 60.f)), module, Modal::POSITION_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 80.f)), module, Modal::DAMPING_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 100.f)), module, Modal::BRIGHTNESS_PARAM));
 		// Inputs
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.f, 22.14f)), module, Modal::AUDIO_INPUT));
 		// Ouputs
