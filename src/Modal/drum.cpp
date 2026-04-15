@@ -1,4 +1,4 @@
-#include "bessel.hpp"
+#include "drum.hpp"
 
 Drum::Drum()
 {
@@ -94,32 +94,67 @@ void Drum::update()
 
 void Drum::setSamplerate(int newSamplerate)
 {
-	samplerate = newSamplerate;
+	if (samplerate != newSamplerate)
+	{
+		samplerate = newSamplerate;
+		update();
+	}
 }
 
 void Drum::setPitch(float newFreq)
 {
-	tuning = std::max(20.f, std::min(newFreq, 10000.f));
+	newFreq = std::max(20.f, std::min(newFreq, 10000.f));
+
+	if (tuning != newFreq)
+	{
+		tuning = newFreq;
+		update();
+	}
 }
 
 void Drum::setPosition(float newPosition)
 {
-	position = std::max(0.f, std::min(newPosition, 1.f));
+	newPosition = std::max(0.f, std::min(newPosition, 1.f));
+
+	if (position != newPosition)
+	{
+		position = newPosition;
+		update();
+	}
 }
 
 void Drum::setSize(float newSize)
 {
-	size = std::max(0.0001f, std::min(newSize, 5.f));
+	newSize = std::max(0.0001f, std::min(newSize, 6.f));
+
+	if (size != newSize)
+	{
+		size = newSize;
+		update();
+	}
+	
 }
 
 void Drum::setDamping(float newDamping)
 {
-	damping = std::max(0.f, std::min(newDamping, 1.f));
+	newDamping = std::max(0.f, std::min(newDamping, 1.f));
+
+	if (damping != newDamping)
+	{
+		damping = newDamping;
+		update();
+	}
 }
 
 void Drum::setOvertones(float newOvertones)
 {
-	overtones = std::max(0.f, std::min(newOvertones, 1.f));
+	newOvertones = std::max(0.f, std::min(newOvertones, 1.f));
+
+	if (overtones != newOvertones)
+	{
+		overtones = newOvertones;
+		update();
+	}
 }
 
 float Drum::getWeight(int index)

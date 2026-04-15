@@ -8,7 +8,7 @@ void ChamberlinSVF::reset()
 
 void ChamberlinSVF::setCoefficients(float f, float q, int fs)
 {
-	f = std::max(20.f, std::min(f, fs / 2.f));
+	f = std::max(20.f, std::min(f, fs * 0.45f));
 	K = std::tan(M_PI * f / fs);
 
 	Q = std::max(q, 1e-6f);

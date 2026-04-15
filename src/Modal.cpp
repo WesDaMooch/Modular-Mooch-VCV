@@ -5,7 +5,7 @@
 #include <vector>
 #include "Modal\resonator.hpp"
 #include "Modal\chamberlinSVF.hpp"
-#include "Modal\bessel.hpp"
+#include "Modal\drum.hpp"
 
 // Ideas
 // Multiple layers of modes
@@ -124,36 +124,15 @@ struct Modal : Module
 		float output = 0.f;
 		float input = inputs[AUDIO_INPUT].getVoltage();
 		// Convert to digital audio range (-1 tp +1)
-		input *= 0.1;
+		input *= 0.1f;
 		input = rack::clamp(input, -1.f, 1.f);
 
-		/*
-		drum.setPitch(fundimentalFreq);
-		//bessel.setSize(1.f);
-		//bessel.setPosition(0.3f);
-		//bessel.setDamping(0.5f);
-		//bessel.setOvertones(0.5f);
-		drum.update();
-
-		for (int i = 0; i < MAX_MODES; i++)
-		{
-			//float amplitude = 1.f;
-			float amplitude = drum.getWeight(i);
-			float freq = drum.getFreq(i);
-
-			resonator[i].set(srate, freq, decay, amplitude);
-			output += resonator[i].proccess(input);
-		}
-
-		output = output / (float)MAX_MODES;
-		*/
-
 		drum.setPitch(params[FREQ_PARAM].getValue()); // Pitch should be size?
-		drum.setSize(params[SIZE_PARAM].getValue() * 5.f);
+		drum.setSize(params[SIZE_PARAM].getValue() * 6.f);
 		drum.setPosition(params[POSITION_PARAM].getValue());
 		drum.setDamping(params[DAMPING_PARAM].getValue());
 		drum.setOvertones(params[BRIGHTNESS_PARAM].getValue());
-		drum.update(); // slow
+		//drum.update(); // slow
 
 		for (int i = 0; i < MAX_MODES; i++)
 		{
@@ -165,13 +144,14 @@ struct Modal : Module
 			//float freq = params[FREQ_PARAM].getValue() * (i + 1);
 			//float weight = 20.f;
 
-			resonator[i].setCoefficients(freq, decay, srate);
+			resonator[i].setCoefficients(freq, weight * decay, srate);
+			//resonator[i].setCoefficients(freq, decay, srate);
 			resonator[i].process(input);
-			output += weight * resonator[i].bandpass();
-			//output += resonator[i].bandpass();
+			//output += weight * resonator[i].bandpass();
+			output += resonator[i].bandpass();
 		}
 
-		output = output / (float)MAX_MODES;;
+		output = output / (float)MAX_MODES;
 
 		// Convert to voltage range (-10 to +10)
 		output *= 10.f;
