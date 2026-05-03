@@ -17,7 +17,7 @@ into a loop of a given length, a concept developed by the iconic Turing Machine 
 
 ## Installing
 
-The plugin can be installed by downloading the latest release build and moving it to Rack’s plugin folder.
+Download the latest release and place the `.vcvplugin` file in your Rack plugins folder.
 
 ## Building
 
