@@ -1,7 +1,7 @@
 # Modular Mooch VCV
 
 > [!IMPORTANT]
-> It is recommended that modules are installed via the VCV Rack Library to receive automatic updates (coming soon).
+> It is recommended that modules are installed via the VCV Rack Library to receive automatic updates (COMING SOON - in the meantime try installing [manually](#installing), is quick and easy!).
 > Instructions are provided below if you prefer to [install](#installing) manually or [build](#building) from source.
 
 Plugin for [VCV Rack](https://vcvrack.com/) by Wesley Leggo-Morrell.
@@ -17,7 +17,7 @@ into a loop of a given length, a concept developed by the iconic Turing Machine 
 
 ## Installing
 
-Download the latest release and place the `.vcvplugin` file in your Rack plugins folder.
+Download the latest release and place the `.vcvplugin` file in your Rack plugins folder. The plugin has only been tested on Windows so if you intend to use Linux or macOS be aware that it may not function as intented. If you encounter a problem please get in contact so I can debug and fix. Enjoy!
 
 ## Building
 
