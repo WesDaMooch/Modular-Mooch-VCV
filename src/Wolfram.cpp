@@ -45,7 +45,7 @@
 
 
 
-
+#include "Wolfram/fxChain.hpp"
 #include "Wolfram/algoEngine.hpp"
 #include "Wolfram/wolfEngine.hpp"
 #include "Wolfram/lifeEngine.hpp"
@@ -178,6 +178,10 @@ struct Wolfram : Module {
 	float syncedEngineCv = 0;
 	int engineIndex = 0;
 
+	// FX chain
+	std::array<FxChain, 2> fxChain;
+	FxChain::FX activeFx = FxChain::FX::Gain;
+
 	// UI
 	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512; // TODO: needs updating onSamplerateChange.
 	static constexpr float MINI_MENU_DISPLAY_TIME = 0.75f;
@@ -211,6 +215,7 @@ struct Wolfram : Module {
 	float prevStepVoltage = 0.f;
 
 	// DSP
+	std::array<float, 2> out{};
 	int srate = 44100;	
 	dsp::PulseGenerator xPulse, yPulse;
 	dsp::SchmittTrigger trigTrigger, resetTrigger, posInjectTrigger, negInjectTrigger;
@@ -230,9 +235,9 @@ struct Wolfram : Module {
 		paramQuantities[PROBABILITY_PARAM]->displayPrecision = 3;
 		configParam(OFFSET_PARAM, 0.f, 7.f, 4.f, "Offset", "", 0.f, 1.f, -4.f);
 		paramQuantities[OFFSET_PARAM]->snapEnabled = true;
-		configParam(X_SCALE_PARAM, 0.f, 1.f, 0.5f, "X CV Scale", "V", 0.f, 10.f);
+		configParam(X_SCALE_PARAM, 0.0f, 1.0f, 0.5f, "X CV Scale", "V", 0.0f, 1.0f);
 		paramQuantities[X_SCALE_PARAM]->displayPrecision = 3;
-		configParam(Y_SCALE_PARAM, 0.f, 1.f, 0.5f, "Y CV Scale", "V", 0.f, 10.f);
+		configParam(Y_SCALE_PARAM, 0.0f, 1.0f, 0.5f, "Y CV Scale", "V", 0.0f, 1.0f);
 		paramQuantities[Y_SCALE_PARAM]->displayPrecision = 3;
 		configInput(RESET_INPUT, "Reset");
 		configInput(PROBABILITY_CV_INPUT, "Probability CV");
@@ -256,6 +261,9 @@ struct Wolfram : Module {
 		engine[1] = &lifeEngine;
 
 		onSampleRateChange();
+		
+		for (auto& chain : fxChain)
+			chain.setAudioRateMode(audioRateMode);
 	}
 
 	void setEngine(int newEngineSelect, float newEngineCv = 0.f) {
@@ -318,6 +326,9 @@ struct Wolfram : Module {
 		pageCounter = 0; 
 		setSlew(0);
 		setEngine(0);
+
+		for (auto& chain : fxChain)
+			chain.reset();
 		
 		for (int i = 0; i < NUM_ENGINES; i++)
 			engine[i]->reset();
@@ -428,6 +439,9 @@ struct Wolfram : Module {
 		json_t* audioRateModeJ = json_object_get(rootJ, "audioRateMode");
 		if (audioRateModeJ)
 			audioRateMode = json_boolean_value(audioRateModeJ);
+
+		for (auto& chain : fxChain)
+			chain.setAudioRateMode(audioRateMode);
 
 		json_t* slewValueJ = json_object_get(rootJ, "slewValue");
 		if (slewValueJ)
@@ -616,7 +630,21 @@ struct Wolfram : Module {
 					}
 					case 2: {
 						// Slew page
-						setSlew(encoderReset ? 0 : (slewValue + delta));
+						//setSlew(encoderReset ? 0 : (slewValue + delta));
+						
+						// FX page
+						if (encoderReset) {
+							activeFx = FxChain::FX::Gain;
+						}
+						else {						
+							int numFx = static_cast<int>(FxChain::FX::Num_FX);
+							int idx = static_cast<int>(activeFx) + delta;
+							while (idx < 0)
+								idx += numFx;
+							while (idx >= numFx)
+								idx -= numFx;
+							activeFx = static_cast<FxChain::FX>(idx);
+						}
 						break;
 					}
 					case 3: {
@@ -656,8 +684,9 @@ struct Wolfram : Module {
 		engineCoreParams[engineIndex].inject = injectState;
 		
 		// OUTPUTS
-		float xCv = 0.f;
-		float yCv = 0.f;
+		//float xCv = 0.f;
+		//float yCv = 0.f;
+		out.fill(0.0f);
 		bool xBit = false;
 		bool yBit = false;
 		float modeLED = 0.f;
@@ -665,27 +694,40 @@ struct Wolfram : Module {
 		for (int i = 0; i < NUM_ENGINES; i++)
 			engine[i]->updateMenuParams(engineMenuParams[i]);
 
-		engine[engineIndex]->process(engineCoreParams[engineIndex], &xCv, &yCv, &xBit, &yBit, &modeLED);
+		engine[engineIndex]->process(engineCoreParams[engineIndex], out, &xBit, &yBit, &modeLED);
 
-		xCv = slewLimiter[0].process(xCv);
-		yCv = slewLimiter[1].process(yCv);
+		//fxChain[0].setFxValue(params[X_SCALE_PARAM].getValue(), FxChain::FX::Gain);
+		//fxChain[1].setFxValue(params[Y_SCALE_PARAM].getValue(), FxChain::FX::Gain);
 
-		float xAudio = xCv - 0.5f;
-		float yAudio = yCv - 0.5f;
-		dcFilter[0].process(xAudio);
-		dcFilter[1].process(yAudio);
-		xAudio = dcFilter[0].highpass();
-		yAudio = dcFilter[1].highpass();
+		for (size_t i = 0; i < fxChain.size(); i++) {
+			fxChain[i].setFxValue((i == 0) ? params[X_SCALE_PARAM].getValue() : params[Y_SCALE_PARAM].getValue(), activeFx);
+			fxChain[i].process(out[i]);
+		}
+		
+		//chainX.process(xCv);
+		//chainY.process(yCv);
+
+		//xCv = slewLimiter[0].process(xCv);
+		//yCv = slewLimiter[1].process(yCv);
+
+		//float xAudio = xCv - 0.5f;
+		//float yAudio = yCv - 0.5f;
+		//dcFilter[0].process(xAudio);
+		//dcFilter[1].process(yAudio);
+		//xAudio = dcFilter[0].highpass();
+		//yAudio = dcFilter[1].highpass();
 
 		// CV outputs - 0V to 10V or -5V to 5V in Audio Rate Mode (10Vpp)
-		float xOut = audioRateMode ? xAudio : xCv;
-		float yOut = audioRateMode ? yAudio : yCv;
-		float xScaleValue = params[X_SCALE_PARAM].getValue();
-		float yScaleValue = params[Y_SCALE_PARAM].getValue();
-		xOut = xOut * xScaleValue * 10.f;
-		yOut = yOut * yScaleValue * 10.f;
-		outputs[X_OUTPUT].setVoltage(xOut);
-		outputs[Y_OUTPUT].setVoltage(yOut);
+		//float xOut = audioRateMode ? xAudio : xCv;
+		//float yOut = audioRateMode ? yAudio : yCv;
+		//float xScaleValue = params[X_SCALE_PARAM].getValue();
+		//float yScaleValue = params[Y_SCALE_PARAM].getValue();
+		//xOut = xOut * xScaleValue * 10.f;
+		//yOut = yOut * yScaleValue * 10.f;
+		//float xOut = out[0];
+		//float yOut = out[1];
+		outputs[X_OUTPUT].setVoltage(out[0] * 10.0f);
+		outputs[Y_OUTPUT].setVoltage(out[1] * 10.0f);
 
 		// Pulse outputs (0V to 10V)
 		if (xBit)
@@ -700,8 +742,8 @@ struct Wolfram : Module {
 
 		// LIGHTS
 		lights[MODE_LIGHT].setBrightnessSmooth(modeLED, args.sampleTime);
-		lights[X_LIGHT].setBrightness(xOut * 0.1f);
-		lights[Y_LIGHT].setBrightness(yOut * 0.1f);
+		lights[X_LIGHT].setBrightness(out[0] * 0.1f);
+		lights[Y_LIGHT].setBrightness(out[1] * 0.1f);
 		lights[X_PULSE_LIGHT].setBrightnessSmooth(xGate, args.sampleTime);
 		lights[Y_PULSE_LIGHT].setBrightnessSmooth(yGate, args.sampleTime);
 		
@@ -730,7 +772,6 @@ struct Display : TransparentWidget {
 	static constexpr float circleCellSize = 5.f;
 	static constexpr float cellPadding = ((widgetSize - (padding * 2.f)) / NUM_COLS);
 	static constexpr float circleCellPadding = (cellPadding * 0.5f) + padding;
-
 	static constexpr float roundedSquareCellSize = 10.f;
 	static constexpr float roundedSquareCellBevel = 1.f;
 	// Text
@@ -1009,11 +1050,23 @@ struct Display : TransparentWidget {
 					break;
 				}
 				case 2: {
-					// Slew page
-					std::copy("SLEW", "SLEW" + 4, title);
-					char slewString[5]{};
-					snprintf(slewString, sizeof(slewString), "%3d%%", module->slewValue);
-					std::copy(slewString, slewString + 4, value);
+					// FX page
+					std::copy(" FX ", " FX " + 4, title);
+					char fxString[5]{};
+					switch (module->activeFx) {
+					case FxChain::FX::Gain:
+						std::copy("GAIN", "GAIN" + 4, fxString);
+						break;
+
+					case FxChain::FX::Slew:
+						std::copy("SLEW", "SLEW" + 4, fxString);
+						break;
+
+					default:
+						break;
+					}
+
+					std::copy(fxString, fxString + 4, value);
 					break;
 				}
 				case 3: {
@@ -1298,6 +1351,8 @@ struct WolframModuleWidget : ModuleWidget {
 			},
 			[=](bool audioRateMode) {
 				module->audioRateMode = audioRateMode;
+				for (auto& chain : module->fxChain)
+					chain.setAudioRateMode(audioRateMode);
 				module->onSampleRateChange();
 			}
 		));

@@ -161,7 +161,7 @@ void LifeEngine::updateMenuParams(const EngineMenuParams& p) {
 }
 
 void LifeEngine::process(const EngineCoreParams& p,
-	float* xOut, float* yOut,
+	std::array<float, 2>& out,
 	bool* xPulse, bool* yPulse,
 	float* modeLED) {
 
@@ -373,10 +373,12 @@ void LifeEngine::process(const EngineCoreParams& p,
 
 	// Output
 	// X - Returns the population (number of alive cells) scaled to 0 - 1
-	*xOut = population * xVoltageScaler;
+	//*xOut = population * xVoltageScaler;
+	out[0] = population * xVoltageScaler;
 	
 	// Y - Returns the 64-bit number display matrix scaled to 0 - 1
-	*yOut = displayMatrix * yVoltageScaler;
+	//*yOut = displayMatrix * yVoltageScaler;
+	out[1] = displayMatrix * yVoltageScaler;
 
 	// X Pulse - True if population (number of alive cells) has grown
 	if (displayMatrixUpdated && (population > prevPopulation))

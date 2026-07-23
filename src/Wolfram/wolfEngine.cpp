@@ -99,7 +99,8 @@ void WolfEngine::updateMenuParams(const EngineMenuParams& p) {
 };
 
 void WolfEngine::process(const EngineCoreParams& p,
-	float* xOut, float* yOut, 
+	//float* xOut, float* yOut,
+	std::array<float, 2>& out,
 	bool* xPulse, bool* yPulse, 
 	float* modeLED) {
 
@@ -206,14 +207,16 @@ void WolfEngine::process(const EngineCoreParams& p,
 	// Render output
 	// X - Returns bottom row of the display matrix scaled to 0-1	
 	uint8_t firstRow = displayMatrix & 0xFFULL;
-	*xOut = firstRow * voltageScaler;
+	//*xOut = firstRow * voltageScaler;
+	out[0] = firstRow * voltageScaler;
 
 	// Y - Returns right column of the display matrix scaled to 0-1
 	// Output matrix is flipped when drawn (right -> left, left <- right)
 	uint64_t yMask = 0x0101010101010101ULL;
 	uint64_t column = displayMatrix & yMask;
 	uint8_t yColumn = static_cast<uint8_t>((column * 0x8040201008040201ULL) >> 56);
-	*yOut = yColumn * voltageScaler;
+	//*yOut = yColumn * voltageScaler;
+	out[1] = yColumn * voltageScaler;
 
 	// X Pulse - Returns true if bottom left cell state of displayMatrix is living
 	bool bottonLeftCellState = ((displayMatrix & 0xFFULL) >> 7) & 1;

@@ -71,7 +71,7 @@ public:
 	virtual void updateMenuParams(const EngineMenuParams& p) = 0;
 
 	virtual void process(const EngineCoreParams& p,
-		float* xOut, float* yOut, 
+		std::array<float, 2>& out, 
 		bool* xPulse, bool* yPulse, 
 		float* modeLED) = 0;
 

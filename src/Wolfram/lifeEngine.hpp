@@ -17,7 +17,7 @@ public:
 	void updateMenuParams(const EngineMenuParams& p) override;
 
 	void process(const EngineCoreParams& p,
-		float* xOut, float* yOut,
+		std::array<float, 2>& out,
 		bool* xPulse, bool* yPulse,
 		float* modeLED) override;
 
