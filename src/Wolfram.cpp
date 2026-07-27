@@ -216,6 +216,7 @@ struct Wolfram : Module {
 
 	// DSP
 	std::array<float, 2> out{};
+	std::array<float, 2> audioOut{};
 	int srate = 44100;	
 	dsp::PulseGenerator xPulse, yPulse;
 	dsp::SchmittTrigger trigTrigger, resetTrigger, posInjectTrigger, negInjectTrigger;
@@ -684,9 +685,8 @@ struct Wolfram : Module {
 		engineCoreParams[engineIndex].inject = injectState;
 		
 		// OUTPUTS
-		//float xCv = 0.f;
-		//float yCv = 0.f;
 		out.fill(0.0f);
+		audioOut.fill(0.0f);
 		bool xBit = false;
 		bool yBit = false;
 		float modeLED = 0.f;
@@ -696,14 +696,17 @@ struct Wolfram : Module {
 
 		engine[engineIndex]->process(engineCoreParams[engineIndex], out, &xBit, &yBit, &modeLED);
 
-		//fxChain[0].setFxValue(params[X_SCALE_PARAM].getValue(), FxChain::FX::Gain);
-		//fxChain[1].setFxValue(params[Y_SCALE_PARAM].getValue(), FxChain::FX::Gain);
-
+		// CV outputs - 0V to 10V or -5V to 5V in Audio Rate Mode (10Vpp)
 		for (size_t i = 0; i < fxChain.size(); i++) {
 			fxChain[i].setFxValue((i == 0) ? params[X_SCALE_PARAM].getValue() : params[Y_SCALE_PARAM].getValue(), activeFx);
 			fxChain[i].process(out[i]);
+			dcFilter[i].process(out[i]);
+			audioOut[i] = dcFilter[i].highpass();
 		}
 		
+		outputs[X_OUTPUT].setVoltage((audioRateMode ? audioOut[0] : out[0]) * 10.0f);
+		outputs[Y_OUTPUT].setVoltage((audioRateMode ? audioOut[1] : out[1]) * 10.0f);
+
 		//chainX.process(xCv);
 		//chainY.process(yCv);
 
@@ -726,8 +729,8 @@ struct Wolfram : Module {
 		//yOut = yOut * yScaleValue * 10.f;
 		//float xOut = out[0];
 		//float yOut = out[1];
-		outputs[X_OUTPUT].setVoltage(out[0] * 10.0f);
-		outputs[Y_OUTPUT].setVoltage(out[1] * 10.0f);
+		//outputs[X_OUTPUT].setVoltage((audioRateMode ? audioOut[0] : out[0]) * 10.0f);
+		//outputs[Y_OUTPUT].setVoltage((audioRateMode ? audioOut[1] : out[1]) * 10.0f);
 
 		// Pulse outputs (0V to 10V)
 		if (xBit)

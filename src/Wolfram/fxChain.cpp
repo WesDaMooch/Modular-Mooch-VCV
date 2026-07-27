@@ -16,14 +16,15 @@ void Gain::process(float& x) {
 
 // Slew
 Slew::Slew() {
-	slewAmount = msToSlew(minSlewMs);
+	reset();
 }
 
 void Slew::set(float v) {
+	float maxSlewMs = audioRateMode ? maxAudioSlewMs : maxCvSlewMs;
+	float minSlewMs = audioRateMode ? minAudioSlewMs : minCvSlewMs;
 	float slewSkew = v * v;
 	float slewMs = std::max(slewSkew * maxSlewMs, minSlewMs);
 	slewAmount = msToSlew(slewMs);
-
 	prevValue = v;
 }
 
@@ -38,7 +39,7 @@ void Slew::setAudioRateMode(bool audioRate) {
 }
 
 void Slew::reset() {
-	slewAmount = msToSlew(minSlewMs);
+	slewAmount = msToSlew(audioRateMode ? minAudioSlewMs : minCvSlewMs);
 	prevValue = 0.0f;
 	y = 0.0f;
 }
@@ -49,10 +50,24 @@ void Slew::process(float& x) {
 }
 
 
+// Fold
+void Fold::set(float v) {
+	foldAmount = v * 2.0f;
+}
+
+void Fold::reset() {
+	foldAmount = 0.0f;
+}
+
+void Fold::process(float& x) {
+	x = (x + foldAmount);	
+}
+
 // FX chain
 void FxChain::reset() {
-	slew.reset();
 	gain.reset();
+	slew.reset();
+	fold.reset();
 }
 
 void FxChain::setSamplerate(int samplerate) {
@@ -61,7 +76,6 @@ void FxChain::setSamplerate(int samplerate) {
 }
 
 void FxChain::setAudioRateMode(bool audioRate) {
-	audioRateMode = audioRate;
 	slew.setAudioRateMode(audioRate);
 }
 
@@ -78,6 +92,10 @@ void FxChain::setFxValue(float v, FX fx) {
 			slew.set(v);
 			break;
 
+		case FX::Fold:
+			fold.set(v);
+			break;
+
 		default:
 			break;
 		}
@@ -88,12 +106,9 @@ void FxChain::setFxValue(float v, FX fx) {
 
 void FxChain::process(float& x) {
 	// Clamp input
-	x = std::min(std::max(x, -1.0f), 1.0f);
+	x = std::min(std::max(x, 0.0f), 1.0f);
 
-	float out = audioRateMode ? (x - 0.5f) : x;
-
-	slew.process(out);
-	gain.process(out);
-	// DC Filter audio
-	x = out;
+	//fold.process(x);
+	slew.process(x);
+	gain.process(x);
 }
