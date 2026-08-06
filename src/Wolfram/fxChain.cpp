@@ -2,6 +2,10 @@
 
 
 // Gain
+Gain::Gain() {
+	reset();
+}
+
 void Gain::set(float v) {
 	gainAmount = v;
 }
@@ -13,6 +17,7 @@ void Gain::reset() {
 void Gain::process(float& x) {
 	x *= gainAmount;
 }
+
 
 // Slew
 Slew::Slew() {
@@ -52,18 +57,25 @@ void Slew::process(float& x) {
 
 // Fold
 void Fold::set(float v) {
-	foldAmount = v * 2.0f;
+	foldAmount = 1.0f + (v * maxFold);
 }
 
 void Fold::reset() {
-	foldAmount = 0.0f;
+	foldAmount = 1.0f;
 }
 
 void Fold::process(float& x) {
-	x = (x + foldAmount);	
+	x *= foldAmount;
+	x = std::fmod(x, 2.0f);
+	x = 1.0f - std::fabs(x - 1.0f);
 }
 
+
 // FX chain
+FxChain::FxChain() {
+	reset();
+}
+
 void FxChain::reset() {
 	gain.reset();
 	slew.reset();
@@ -107,8 +119,8 @@ void FxChain::setFxValue(float v, FX fx) {
 void FxChain::process(float& x) {
 	// Clamp input
 	x = std::min(std::max(x, 0.0f), 1.0f);
-
-	//fold.process(x);
+	
 	slew.process(x);
+	//fold.process(x);
 	gain.process(x);
 }

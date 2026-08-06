@@ -61,29 +61,45 @@ static constexpr int NUM_MENU_PAGES = 4;
 static constexpr int NUM_DISPLAY_STYLES = 5;
 static constexpr int NUM_CELL_STYLES = 2;
 
-class SlewLimiter {
-public:
-	void setSlewAmountMs(float slew_ms, float sr) {
-		if (sr <= 0) 
-			sr = 1;
 
-		slew_ms = rack::clamp(slew_ms, 1e-3f, 1000.f);
-		slew = (1000.f / sr) / slew_ms;
+// Json buffer packing
+static std::string packUint64Array(const uint64_t* data, size_t count) {
+	// Pack buffer to string
+	std::string out;
+	out.reserve(count * 16);
+
+	char buf[17] = {};
+
+	for (size_t i = 0; i < count; i++) {
+		snprintf(buf, sizeof(buf), "%016" PRIx64, data[i]);
+		out.append(buf);
 	}
 
-	void reset() { 
-		y = 0; 
+	return out;
+}
+
+static void unpackUint64Array(const char* str, uint64_t* data, size_t count) {
+	// Unpack string to buffer 
+	if (!str || !data)
+		return;
+
+	size_t expected = count * 16;
+	size_t len = std::strlen(str);
+
+	if (len != expected) {
+		std::memset(data, 0, count * sizeof(uint64_t));
+		return;
 	}
 
-	float process(float x) {
-		y += rack::clamp(x - y, -slew, slew);
-		return y;
-	}
+	char buf[17] = {};
+	buf[16] = '\0';
 
-protected:
-	float y = 0.f;
-	float slew = 20.f;
-};
+	for (size_t i = 0; i < count; ++i) {
+		std::memcpy(buf, str + (i * 16), 16);
+		data[i] = std::strtoull(buf, nullptr, 16);
+	}
+}
+
 
 struct Wolfram : Module {
 	enum ParamId {
@@ -93,8 +109,10 @@ struct Wolfram : Module {
 		LENGTH_PARAM,
 		PROBABILITY_PARAM,
 		OFFSET_PARAM,
-		X_SCALE_PARAM,
-		Y_SCALE_PARAM,
+		X_GAIN_PARAM,
+		X_SLEW_PARAM,
+		Y_GAIN_PARAM,
+		Y_SLEW_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
@@ -180,7 +198,7 @@ struct Wolfram : Module {
 
 	// FX chain
 	std::array<FxChain, 2> fxChain;
-	FxChain::FX activeFx = FxChain::FX::Gain;
+	FX activeFx = FX::Gain;
 
 	// UI
 	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512; // TODO: needs updating onSamplerateChange.
@@ -207,7 +225,6 @@ struct Wolfram : Module {
 		2, 3, 4, 6, 8, 12, 16, 32, 64 
 	};
 	size_t sequenceLength = 8;
-	int slewValue = 0;
 	bool sync = false;
 	bool audioRateMode = false;
 	bool ruleModulation = false;
@@ -223,23 +240,26 @@ struct Wolfram : Module {
 	dsp::BooleanTrigger menuTrigger, modeTrigger;
 	dsp::Timer ruleDisplayTimer;
 	dsp::RCFilter dcFilter[2];
-	SlewLimiter slewLimiter[2];
 
 	Wolfram() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configButton(MENU_PARAM, "Menu");
 		configButton(MODE_PARAM, "Mode");
 		configParam<EncoderParamQuantity>(SELECT_PARAM, -INFINITY, +INFINITY, 0, "Rule");
-		configParam<LengthParamQuantity>(LENGTH_PARAM, 0.f, 8.f, 4.f, "Length");
+		configParam<LengthParamQuantity>(LENGTH_PARAM, 0.0f, 8.0f, 4.0f, "Length");
 		paramQuantities[LENGTH_PARAM]->snapEnabled = true;
-		configParam(PROBABILITY_PARAM, 0.f, 1.f, 1.f, "Probability", "%", 0.f, 100.f);
+		configParam(PROBABILITY_PARAM, 0.0f, 1.0f, 1.0f, "Probability", "%", 0.0f, 100.0f);
 		paramQuantities[PROBABILITY_PARAM]->displayPrecision = 3;
-		configParam(OFFSET_PARAM, 0.f, 7.f, 4.f, "Offset", "", 0.f, 1.f, -4.f);
+		configParam(OFFSET_PARAM, 0.0f, 7.0f, 4.0f, "Offset", "", 0.0f, 1.0f, -4.0f);
 		paramQuantities[OFFSET_PARAM]->snapEnabled = true;
-		configParam(X_SCALE_PARAM, 0.0f, 1.0f, 0.5f, "X CV Scale", "V", 0.0f, 1.0f);
-		paramQuantities[X_SCALE_PARAM]->displayPrecision = 3;
-		configParam(Y_SCALE_PARAM, 0.0f, 1.0f, 0.5f, "Y CV Scale", "V", 0.0f, 1.0f);
-		paramQuantities[Y_SCALE_PARAM]->displayPrecision = 3;
+		configParam(X_GAIN_PARAM, 0.0f, 1.0f, 0.5f, "X Gain", "V", 0.0f, 10.0f);
+		paramQuantities[X_GAIN_PARAM]->displayPrecision = 3;
+		configParam(X_SLEW_PARAM, 0.0f, 1.0f, 0.0f, "X Slew", "%", 0.0f, 100.0f);
+		paramQuantities[X_SLEW_PARAM]->displayPrecision = 3;
+		configParam(Y_GAIN_PARAM, 0.0f, 1.0f, 0.5f, "Y Gain", "V", 0.0f, 10.0f);
+		paramQuantities[Y_GAIN_PARAM]->displayPrecision = 3;
+		configParam(Y_SLEW_PARAM, 0.0f, 1.0f, 0.0f, "Y Slew", "%", 0.0f, 100.0f);
+		paramQuantities[Y_SLEW_PARAM]->displayPrecision = 3;
 		configInput(RESET_INPUT, "Reset");
 		configInput(PROBABILITY_CV_INPUT, "Probability CV");
 		configInput(RULE_CV_INPUT, "Rule CV");
@@ -292,28 +312,17 @@ struct Wolfram : Module {
 		engineToUiLayerPtr.store(writeState, std::memory_order_release);
 	}
 
-	void setSlew(int newSlewSelect) {
-		// Skew slewParam (0 - 100%) -> (0 - 1)
-		// Convert to ms, if Audio Rate mode (0 - 10ms) else (0 - 1000ms)
-		slewValue = rack::clamp(newSlewSelect, 0, 100);
-		float slewSkew = std::pow(slewValue * 0.01f, 2.f);
-		float slew = audioRateMode ? (slewSkew * 10.f) : (slewSkew * 1000.f);
-
-		for (int i = 0; i < 2; i++)
-			slewLimiter[i].setSlewAmountMs(slew, srate);
-	}
-
 	void onSampleRateChange() override {
 		srate = APP->engine->getSampleRate();
 
 		// Set DC blocker to ~10Hz,
 		// Set Slew time (ms)
-		setSlew(slewValue);
 
-		for (int i = 0; i < 2; i++) {
+		for (size_t i = 0; i < 2; i++) {
 			dcFilter[i].setCutoffFreq(10.f / srate);
 			dcFilter[i].reset();
-			slewLimiter[i].reset();
+			fxChain[i].setSamplerate(srate);
+			fxChain[i].reset();
 		}
 	}
 
@@ -325,55 +334,16 @@ struct Wolfram : Module {
 		menuActive = false;
 		miniMenuActive = false;
 		pageCounter = 0; 
-		setSlew(0);
 		setEngine(0);
 
 		for (auto& chain : fxChain)
 			chain.reset();
 		
-		for (int i = 0; i < NUM_ENGINES; i++)
+		for (size_t i = 0; i < NUM_ENGINES; i++)
 			engine[i]->reset();
 		
 		displayStyleIndex = 0;
 		cellStyleIndex = 0;
-	}
-
-	// Whhhat, pretty cool way of doing things
-	static std::string packUint64Array(const uint64_t* data, size_t count) {
-		// Pack buffer for saveing
-		std::string out;
-		out.reserve(count * 16);
-
-		char buf[17] = {};
-
-		for (size_t i = 0; i < count; i++) {
-			snprintf(buf, sizeof(buf), "%016" PRIx64, data[i]);
-			out.append(buf);
-		}
-
-		return out;
-	}
-
-	static void unpackUint64Array(const char* str, uint64_t* data, size_t count) {
-		// Unpack string for buffer loading
-		if (!str || !data)
-			return;
-
-		size_t expected = count * 16;
-		size_t len = std::strlen(str);
-
-		if (len != expected) {
-			std::memset(data, 0, count * sizeof(uint64_t));
-			return;
-		}
-
-		char buf[17] = {};
-		buf[16] = '\0';
-
-		for (size_t i = 0; i < count; ++i) {
-			std::memcpy(buf, str + (i * 16), 16);
-			data[i] = std::strtoull(buf, nullptr, 16);
-		}
 	}
 	
 	json_t* dataToJson() override {
@@ -382,7 +352,6 @@ struct Wolfram : Module {
 		// Save sequencer settings
 		json_object_set_new(rootJ, "audioRateMode", json_boolean(audioRateMode));
 		json_object_set_new(rootJ, "sync", json_boolean(sync));
-		json_object_set_new(rootJ, "slewValue", json_integer(slewValue));
 
 		// Save engine selection
 		json_object_set_new(rootJ, "engine", json_integer(engineSelect));
@@ -441,12 +410,9 @@ struct Wolfram : Module {
 		if (audioRateModeJ)
 			audioRateMode = json_boolean_value(audioRateModeJ);
 
+		// Load FX chain settings
 		for (auto& chain : fxChain)
 			chain.setAudioRateMode(audioRateMode);
-
-		json_t* slewValueJ = json_object_get(rootJ, "slewValue");
-		if (slewValueJ)
-			setSlew(json_integer_value(slewValueJ));
 
 		// Load engine selection
 		json_t* engineSelectJ = json_object_get(rootJ, "engine");
@@ -544,7 +510,7 @@ struct Wolfram : Module {
 
 		for (int i = 0; i < NUM_ENGINES; i++) {
 			// Clear menu parameter's delta and reset
-			for (int j = 0; j < EngineMenuParams::DELTA_LEN; j++) {
+			for (size_t j = 0; j < EngineMenuParams::DELTA_LEN; j++) {
 				engineMenuParams[i].menuDelta[j] = 0;
 				engineMenuParams[i].menuReset[j] = false;
 			}
@@ -630,21 +596,18 @@ struct Wolfram : Module {
 						break;
 					}
 					case 2: {
-						// Slew page
-						//setSlew(encoderReset ? 0 : (slewValue + delta));
-						
 						// FX page
 						if (encoderReset) {
-							activeFx = FxChain::FX::Gain;
+							activeFx = FX::Gain;
 						}
 						else {						
-							int numFx = static_cast<int>(FxChain::FX::Num_FX);
+							int numFx = static_cast<int>(FX::Num_FX);
 							int idx = static_cast<int>(activeFx) + delta;
 							while (idx < 0)
 								idx += numFx;
 							while (idx >= numFx)
 								idx -= numFx;
-							activeFx = static_cast<FxChain::FX>(idx);
+							activeFx = static_cast<FX>(idx);
 						}
 						break;
 					}
@@ -689,7 +652,7 @@ struct Wolfram : Module {
 		audioOut.fill(0.0f);
 		bool xBit = false;
 		bool yBit = false;
-		float modeLED = 0.f;
+		float modeLED = 0.0f;
 	
 		for (int i = 0; i < NUM_ENGINES; i++)
 			engine[i]->updateMenuParams(engineMenuParams[i]);
@@ -698,7 +661,9 @@ struct Wolfram : Module {
 
 		// CV outputs - 0V to 10V or -5V to 5V in Audio Rate Mode (10Vpp)
 		for (size_t i = 0; i < fxChain.size(); i++) {
-			fxChain[i].setFxValue((i == 0) ? params[X_SCALE_PARAM].getValue() : params[Y_SCALE_PARAM].getValue(), activeFx);
+			bool xChannel = (i == 0);
+			fxChain[i].gain.set(xChannel ? params[X_GAIN_PARAM].getValue() : params[Y_GAIN_PARAM].getValue());
+			fxChain[i].slew.set(xChannel ? params[X_SLEW_PARAM].getValue() : params[Y_SLEW_PARAM].getValue());
 			fxChain[i].process(out[i]);
 			dcFilter[i].process(out[i]);
 			audioOut[i] = dcFilter[i].highpass();
@@ -706,31 +671,6 @@ struct Wolfram : Module {
 		
 		outputs[X_OUTPUT].setVoltage((audioRateMode ? audioOut[0] : out[0]) * 10.0f);
 		outputs[Y_OUTPUT].setVoltage((audioRateMode ? audioOut[1] : out[1]) * 10.0f);
-
-		//chainX.process(xCv);
-		//chainY.process(yCv);
-
-		//xCv = slewLimiter[0].process(xCv);
-		//yCv = slewLimiter[1].process(yCv);
-
-		//float xAudio = xCv - 0.5f;
-		//float yAudio = yCv - 0.5f;
-		//dcFilter[0].process(xAudio);
-		//dcFilter[1].process(yAudio);
-		//xAudio = dcFilter[0].highpass();
-		//yAudio = dcFilter[1].highpass();
-
-		// CV outputs - 0V to 10V or -5V to 5V in Audio Rate Mode (10Vpp)
-		//float xOut = audioRateMode ? xAudio : xCv;
-		//float yOut = audioRateMode ? yAudio : yCv;
-		//float xScaleValue = params[X_SCALE_PARAM].getValue();
-		//float yScaleValue = params[Y_SCALE_PARAM].getValue();
-		//xOut = xOut * xScaleValue * 10.f;
-		//yOut = yOut * yScaleValue * 10.f;
-		//float xOut = out[0];
-		//float yOut = out[1];
-		//outputs[X_OUTPUT].setVoltage((audioRateMode ? audioOut[0] : out[0]) * 10.0f);
-		//outputs[Y_OUTPUT].setVoltage((audioRateMode ? audioOut[1] : out[1]) * 10.0f);
 
 		// Pulse outputs (0V to 10V)
 		if (xBit)
@@ -993,8 +933,7 @@ struct Display : TransparentWidget {
 						drawTextBg(vg, 2);
 					}
 					else {
-						drawWolfSeedDisplay(vg, layer,
-							static_cast<uint8_t>(seed));
+						drawWolfSeedDisplay(vg, layer, static_cast<uint8_t>(seed));
 					}
 					drawTextBg(vg, 0);
 					drawTextBg(vg, 1);
@@ -1048,8 +987,7 @@ struct Display : TransparentWidget {
 				case 1: {
 					// Mode page
 					std::copy("MODE", "MODE" + 4, title);
-					std::copy(eLayer[engineSelect].modeLabel,
-						eLayer[engineSelect].modeLabel + 4, value);
+					std::copy(eLayer[engineSelect].modeLabel, eLayer[engineSelect].modeLabel + 4, value);
 					break;
 				}
 				case 2: {
@@ -1057,12 +995,16 @@ struct Display : TransparentWidget {
 					std::copy(" FX ", " FX " + 4, title);
 					char fxString[5]{};
 					switch (module->activeFx) {
-					case FxChain::FX::Gain:
+					case FX::Gain:
 						std::copy("GAIN", "GAIN" + 4, fxString);
 						break;
 
-					case FxChain::FX::Slew:
+					case FX::Slew:
 						std::copy("SLEW", "SLEW" + 4, fxString);
+						break;
+
+					case FX::Fold:
+						std::copy("FOLD", "FOLD" + 4, fxString);
 						break;
 
 					default:
@@ -1150,11 +1092,10 @@ struct Display : TransparentWidget {
 		bool menuActive = module ? module->menuActive : false;
 		bool miniMenuActive = module ? module->miniMenuActive : false;
 
-		// Backgound
 		if (layer == 0) {
+			// Backgound
 			nvgBeginPath(vg);
-			nvgRoundedRect(vg, padding * 0.5f, padding * 0.5f,
-				widgetSize - padding, widgetSize - padding, 2.f);
+			nvgRoundedRect(vg, padding * 0.5f, padding * 0.5f, widgetSize - padding, widgetSize - padding, 2.f);
 			nvgFillColor(vg, getScreenColour());
 			nvgFill(vg);
 			// Outline
@@ -1185,6 +1126,8 @@ struct Display : TransparentWidget {
 };
 
 struct WolframModuleWidget : ModuleWidget {
+	FX lastActiveFx = FX::Gain;
+
 	// Custom knobs & dials
 	struct LengthKnob : M1900hBlackKnob {
 		LengthKnob() {
@@ -1306,8 +1249,17 @@ struct WolframModuleWidget : ModuleWidget {
 		addParam(createParamCentered<LengthKnob>(mm2px(Vec(15.24f, 61.369f)), module, Wolfram::LENGTH_PARAM));
 		addParam(createParamCentered<ProbabilityKnob>(mm2px(Vec(45.72f, 61.369f)), module, Wolfram::PROBABILITY_PARAM));
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(30.48f, 80.597f)), module, Wolfram::OFFSET_PARAM));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(7.62f, 80.597f)), module, Wolfram::X_SCALE_PARAM));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(53.34f, 80.597f)), module, Wolfram::Y_SCALE_PARAM));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(7.62f, 80.597f)), module, Wolfram::X_GAIN_PARAM));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(53.34f, 80.597f)), module, Wolfram::Y_GAIN_PARAM));
+		
+		ParamWidget* xSlewParam = createParamCentered<Trimpot>(mm2px(Vec(7.62f, 80.597f)), module, Wolfram::X_SLEW_PARAM);
+		xSlewParam->hide();
+		addParam(xSlewParam);
+
+		ParamWidget* ySlewParam = createParamCentered<Trimpot>(mm2px(Vec(53.34f, 80.597f)), module, Wolfram::Y_SLEW_PARAM);
+		ySlewParam->hide();
+		addParam(ySlewParam);
+
 		// Inputs
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(7.62f, 22.14f)), module, Wolfram::RESET_INPUT));
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(30.48f, 99.852f)), module, Wolfram::OFFSET_CV_INPUT));
@@ -1331,9 +1283,42 @@ struct WolframModuleWidget : ModuleWidget {
 		Display* display = new Display(module, mm2px(10.14f), box.size.x);
 		addChild(display);
 	}
+
 	
+	void step() override {
+		ModuleWidget::step();
+
+		auto* module = dynamic_cast<Wolfram*>(this->module);
+
+		if (!module)
+			return;
+	
+		if (module->activeFx != lastActiveFx) {
+			switch (module->activeFx) {
+			case FX::Gain:
+				getParam(Wolfram::X_SLEW_PARAM)->hide();
+				getParam(Wolfram::Y_SLEW_PARAM)->hide();
+				getParam(Wolfram::X_GAIN_PARAM)->show();
+				getParam(Wolfram::Y_GAIN_PARAM)->show();
+				break;
+
+			case FX::Slew:
+				getParam(Wolfram::X_GAIN_PARAM)->hide();
+				getParam(Wolfram::Y_GAIN_PARAM)->hide();
+				getParam(Wolfram::X_SLEW_PARAM)->show();
+				getParam(Wolfram::Y_SLEW_PARAM)->show();
+				break;
+
+			default:
+				break;
+			}
+			lastActiveFx = module->activeFx;
+		}
+	}
+	
+
 	void appendContextMenu(Menu* menu) override {
-		Wolfram* module = dynamic_cast<Wolfram*>(this->module);
+		auto* module = dynamic_cast<Wolfram*>(this->module);
 		
 		menu->addChild(new MenuSeparator);
 		menu->addChild(createIndexSubmenuItem("Algorithm",

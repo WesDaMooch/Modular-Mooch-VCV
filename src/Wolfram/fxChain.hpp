@@ -1,9 +1,20 @@
 #pragma once
+#include <cmath>
 #include <algorithm>
+
+enum class FX
+{
+	Gain,
+	Slew,
+	Fold,
+	Num_FX
+};
+
 
 class Gain
 {
 public:
+	Gain();
 	void set(float v);
 	void reset();
 	void process(float& x);
@@ -24,11 +35,7 @@ public:
 	void process(float& x);
 
 protected:	
-	inline float msToSlew(float slewMs) const {
-		return (1000.0f / sr) / slewMs;
-	}
-
-	const float maxCvSlewMs = 1000.0f;
+	const float maxCvSlewMs = 5000.0f;
 	const float minCvSlewMs = 1e-3f;
 	const float maxAudioSlewMs = 5.0f;
 	const float minAudioSlewMs = 1e-6f;
@@ -39,33 +46,36 @@ protected:
 	float prevValue = 0.0f;
 	float slewAmount = 0.0f;
 	float y = 0.0f;
+
+	inline float msToSlew(float slewMs) const {
+		return (1000.0f / sr) / slewMs;
+	}
 };
 
 
+// TODO: look at max msp book 
 class Fold
 {
-	//https://ccrma.stanford.edu/~jatin/ComplexNonlinearities/Wavefolder.html
 public:
 	void set(float v);
 	void reset();
 	void process(float& x);
 
 protected:
-	float foldAmount = 0.5f;
+	const float maxFold = 4.0f;
+	float foldAmount = 1.0f;
 };
 
 
 class FxChain
 {
 public:
-	enum class FX
-	{
-		Gain,
-		Slew,
-		Fold,
-		Num_FX
-	};
 
+	Fold fold;
+	Slew slew;
+	Gain gain;
+
+	FxChain();
 	void reset();
 	void setSamplerate(int samplerate);
 	void setAudioRateMode(bool audioRate);
@@ -73,10 +83,6 @@ public:
 	void process(float& x);
 
 protected:
-	Fold fold;
-	Slew slew;
-	Gain gain;
-
 	const float valueThreshold = 1e-5f;
 	float prevValue = 0.0f;
 };
