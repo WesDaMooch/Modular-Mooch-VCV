@@ -1003,10 +1003,6 @@ struct Display : TransparentWidget {
 						std::copy("SLEW", "SLEW" + 4, fxString);
 						break;
 
-					case FX::Fold:
-						std::copy("FOLD", "FOLD" + 4, fxString);
-						break;
-
 					default:
 						break;
 					}
