@@ -8,17 +8,20 @@
 
 #include "wolfEngine.hpp"
 
+
 const char WolfEngine::modeLabel[WolfEngine::NUM_MODES][5] = {
 	"CLIP",
 	"WRAP",
 	"RAND"
 };
 
+
 WolfEngine::WolfEngine() {
 	memcpy(engineLabel, "WOLF", 5);
 	rowBuffer[readHead] = seed;
 	updateDisplay(false);
 }
+
 
 void WolfEngine::updateDisplay(bool step, size_t length) {
 	if (step) {
@@ -38,6 +41,73 @@ void WolfEngine::updateDisplay(bool step, size_t length) {
 	displayMatrix = tempMatrix;
 	displayMatrixUpdated = true;
 }
+
+
+void WolfEngine::updateMenuParams(const EngineMenuParams& p) {
+	// Rule
+	int newRuleSelect = ruleSelect;
+	if (p.menuReset[EngineMenuParams::RULE_RESET])
+		newRuleSelect = ruleDefault;
+	else if (p.menuDelta[EngineMenuParams::RULE_DELTA] != 0)
+		newRuleSelect = static_cast<uint8_t>(ruleSelect + p.menuDelta[EngineMenuParams::RULE_DELTA]);
+	setRuleSelect(newRuleSelect);
+
+	// Seed
+	int newSeedSelect = seedSelect;
+	if (p.menuReset[EngineMenuParams::SEED_RESET])
+		newSeedSelect = seedDefault;
+	else if (p.menuDelta[EngineMenuParams::SEED_DELTA] != 0)
+		newSeedSelect += p.menuDelta[EngineMenuParams::SEED_DELTA];
+	setSeed(newSeedSelect);
+
+	// Mode
+	int newModeSelect = updateSelect(p.menuDelta[EngineMenuParams::MODE_DELTA],
+		p.menuReset[EngineMenuParams::MODE_RESET],
+		modeIndex, modeDefault, NUM_MODES);
+	setMode(newModeSelect);
+};
+
+
+void WolfEngine::onGenerate() {
+	// One Dimensional Cellular Automata
+	uint8_t readRow = rowBuffer[readHead];
+	uint8_t writeRow = 0;
+
+	// Clip
+	uint8_t left = readRow >> 1;
+	uint8_t right = readRow << 1;
+
+	if (modeIndex == 1) {
+		// Wrap
+		left = (readRow >> 1) | (readRow << 7);
+		right = (readRow << 1) | (readRow >> 7);
+	}
+	else if (modeIndex == 2) {
+		// Random
+		left |= rack::random::get<bool>() << 7;
+		right |= rack::random::get<bool>();
+	}
+
+	for (int col = 0; col < 8; col++) {
+		uint8_t leftBit = (left >> col) & 1;
+		uint8_t currentBit = (readRow >> col) & 1;
+		uint8_t rightBit = (right >> col) & 1;
+
+		uint8_t tag = (leftBit << 2) | (currentBit << 1) | rightBit;
+		uint8_t newBit = (rule >> tag) & 1;
+
+		writeRow |= newBit << col;
+	}
+	rowBuffer[writeHead] = writeRow;
+}
+
+
+void WolfEngine::resetToSeed(bool sync) {
+	int head = sync ? writeHead : readHead;
+	uint8_t resetRow = randSeed ? rack::random::get<uint8_t>() : seed;
+	rowBuffer[head] = resetRow;
+}
+
 
 void WolfEngine::inject(int inject, bool sync) {
 	size_t head = sync ? writeHead : readHead;
@@ -74,165 +144,33 @@ void WolfEngine::inject(int inject, bool sync) {
 	}
 }
 
-void WolfEngine::updateMenuParams(const EngineMenuParams& p) {
-	// Rule
-	int newRuleSelect = ruleSelect;
-	if (p.menuReset[EngineMenuParams::RULE_RESET])
-		newRuleSelect = ruleDefault;
-	else if (p.menuDelta[EngineMenuParams::RULE_DELTA] != 0)
-		newRuleSelect = static_cast<uint8_t>(ruleSelect + p.menuDelta[EngineMenuParams::RULE_DELTA]);
-	setRuleSelect(newRuleSelect);
 
-	// Seed
-	int newSeedSelect = seedSelect;
-	if (p.menuReset[EngineMenuParams::SEED_RESET])
-		newSeedSelect = seedDefault;
-	else if (p.menuDelta[EngineMenuParams::SEED_DELTA] != 0)
-		newSeedSelect += p.menuDelta[EngineMenuParams::SEED_DELTA];
-	setSeed(newSeedSelect);
-
-	// Mode
-	int newModeSelect = updateSelect(p.menuDelta[EngineMenuParams::MODE_DELTA],
-		p.menuReset[EngineMenuParams::MODE_RESET],
-		modeIndex, modeDefault, NUM_MODES);
-	setMode(newModeSelect);
-};
-
-void WolfEngine::process(const EngineCoreParams& p,
-	//float* xOut, float* yOut,
-	std::array<float, 2>& out,
-	bool* xPulse, bool* yPulse, 
-	float* modeLED) {
-
-	// Sequencer
-	bool refreshDisplay = p.step;
-	bool syncStep = p.sync && p.step;
-	generate = rack::random::get<float>() < p.probability;
-
-	if (!p.sync || (syncStep))
-		setRuleCv(p.ruleCv);
-
-	bool injectOccured = (p.inject != 0);
-	if (injectOccured && p.sync)
-		injectPending += p.inject;
-
-	// Non-sync inject
-	if (injectOccured && !p.sync) {
-		inject(p.inject, p.sync);
-		refreshDisplay = true;
-	}
-
-	// Reset
-	bool seedReset = (p.miniMenuChanged && generate) && !p.sync;
-
-	if (p.miniMenuChanged && p.sync)
-		seedResetPending = true;
-
-	if (p.reset && p.sync)
-		resetPending = true;
-
-	if (((p.reset || seedReset) && !p.sync) || ((resetPending || seedResetPending) && syncStep)) {
-		if (generate) {
-			int head = p.sync ? writeHead : readHead;
-			uint8_t resetRow = randSeed ? rack::random::get<uint8_t>() : seed;
-			rowBuffer[head] = resetRow;
-			generate = false;
-		}
-		else if (!seedResetPending) {
-			if (p.sync) {
-				writeHead = 0;
-			}
-			else {
-				readHead = 0;
-				writeHead = 1;
-			}
-		}
-		resetPending = false;
-		seedResetPending = false;
-		refreshDisplay = true;
-	}
-
-	// Generate
-	if (generate && p.step) {
-		// One Dimensional Cellular Automata
-		uint8_t readRow = rowBuffer[readHead];
-		uint8_t writeRow = 0;
-
-		// Clip
-		uint8_t left = readRow >> 1;
-		uint8_t right = readRow << 1;
-
-		if (modeIndex == 1) {
-			// Wrap
-			left = (readRow >> 1) | (readRow << 7);
-			right = (readRow << 1) | (readRow >> 7);
-		}
-		else if (modeIndex == 2) {
-			// Random
-			left |= rack::random::get<bool>() << 7;
-			right |= rack::random::get<bool>();
-		}
-
-		for (int col = 0; col < 8; col++) {
-			uint8_t leftBit = (left >> col) & 1;
-			uint8_t currentBit = (readRow >> col) & 1;
-			uint8_t rightBit = (right >> col) & 1;
-
-			uint8_t tag = (leftBit << 2) | (currentBit << 1) | rightBit;
-			uint8_t newBit = (rule >> tag) & 1;
-
-			writeRow |= newBit << col;
-		}
-		rowBuffer[writeHead] = writeRow;
-		refreshDisplay = true;
-	}
-
-	// Sync inject
-	if (injectPending && syncStep) {
-		inject(injectPending, p.sync);
-		injectPending = 0;
-	}
-
-	// Offset
-	int newOffset = p.offset - 4;
-	if ((!p.sync && (offset != newOffset)) || syncStep) {
-		offset = newOffset;
-		refreshDisplay = true;
-	}
-
-	// Update
-	if (refreshDisplay)
-		updateDisplay(p.step, p.length);
-
-	// Render output
+void WolfEngine::renderOutput(EngineOutput& output) {
 	// X - Returns bottom row of the display matrix scaled to 0-1	
 	uint8_t firstRow = displayMatrix & 0xFFULL;
-	//*xOut = firstRow * voltageScaler;
-	out[0] = firstRow * voltageScaler;
+	output.voltage[0] = firstRow * voltageScaler;
 
 	// Y - Returns right column of the display matrix scaled to 0-1
 	// Output matrix is flipped when drawn (right -> left, left <- right)
 	uint64_t yMask = 0x0101010101010101ULL;
 	uint64_t column = displayMatrix & yMask;
 	uint8_t yColumn = static_cast<uint8_t>((column * 0x8040201008040201ULL) >> 56);
-	//*yOut = yColumn * voltageScaler;
-	out[1] = yColumn * voltageScaler;
+	output.voltage[1] = yColumn * voltageScaler;
 
 	// X Pulse - Returns true if bottom left cell state of displayMatrix is living
 	bool bottonLeftCellState = ((displayMatrix & 0xFFULL) >> 7) & 1;
 	if (displayMatrixUpdated && bottonLeftCellState)
-		*xPulse = true;
+		output.xBit = true;
 
 	// Y Pulse - Returns true if top right cell state	of displayMatrix is living
 	bool topRightCellState = ((displayMatrix >> 56) & 0xFFULL) & 1;
 	if (displayMatrixUpdated && topRightCellState)
-		*yPulse = true;
+		output.yBit = true;
 
 	// Mode LED brightness
-	*modeLED = static_cast<float>(modeIndex) * modeScaler;
-
-	displayMatrixUpdated = false;
+	output.modeLED = static_cast<float>(modeIndex) * modeScaler;
 }
+
 
 void WolfEngine::reset() {
 	for (int i = 0; i < MAX_SEQUENCE_LENGTH; i++)
@@ -249,6 +187,7 @@ void WolfEngine::reset() {
 	updateDisplay(false);
 }
 
+
 // Save setters
 void WolfEngine::setBufferFrame(uint64_t newFrame, int index, 
 	bool setDisplayMatrix) {
@@ -259,19 +198,23 @@ void WolfEngine::setBufferFrame(uint64_t newFrame, int index,
 		rowBuffer[index] = static_cast<uint8_t>(newFrame);
 }
 
+
 void WolfEngine::onRuleChange() {
 	rule = static_cast<uint8_t>(rack::clamp(ruleSelect + ruleCv, 0, UINT8_MAX));
 }
+
 
 void WolfEngine::setRuleSelect(int newRule) {
 	ruleSelect = rack::clamp(newRule, 0, UINT8_MAX);
 	onRuleChange();
 }
 
+
 void WolfEngine::setRuleCv(float newRuleCv) {
 	ruleCv = static_cast<int>(std::round(newRuleCv * 256));
 	onRuleChange();
 }
+
 
 void WolfEngine::setSeed(int newSeed) {
 	if (newSeed == seedSelect)
@@ -288,12 +231,14 @@ void WolfEngine::setSeed(int newSeed) {
 	seed = static_cast<uint8_t>(seedSelect);
 }
 
+
 void WolfEngine::setMode(int newMode) {
 	if (newMode == modeIndex)
 		return;
 
 	modeIndex = rack::clamp(newMode, 0, NUM_MODES - 1);
 }
+
 
 // Save getters
 uint64_t WolfEngine::getBufferFrame(int index, 
@@ -310,30 +255,37 @@ uint64_t WolfEngine::getBufferFrame(int index,
 		return 0;
 }
 
+
 int WolfEngine::getRuleSelect() {
 	return ruleSelect;
 }
+
 
 int WolfEngine::getSeed() {
 	return seedSelect;
 }
 
+
 int WolfEngine::getMode() {
 	return modeIndex;
 }
+
 
 // UI getters
 void WolfEngine::getRuleActiveLabel(char out[5]) {
 	snprintf(out, 5, "%4d", rule);
 }
 
+
 void WolfEngine::getRuleSelectLabel(char out[5]) {
 	snprintf(out, 5, "%4d", ruleSelect);
 }
 
+
 void WolfEngine::getSeedLabel(char out[5]) {
 	memcpy(out, "    ", 5);
 }
+
 
 void WolfEngine::getModeLabel(char out[5]) {
 	memcpy(out, modeLabel[modeIndex], 5);

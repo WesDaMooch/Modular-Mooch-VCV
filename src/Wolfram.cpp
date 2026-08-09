@@ -20,16 +20,10 @@
 // TODO: figure out if the EngineToUiLayer is the best way to do share data.
 //
 // V1.1:
-// - Replace Slew menu page with FX page.
+// - Replace Slew menu page with FX page. DONE
 // here an effect can be selected that is applied to the output,
 // the amount of effect that is applied is contolled by the Scale params.
 // See Audible Instruments Macro Oscillator 2 for multi-purpose knobs with dynamic tool tips.
-// Effects:
-// GAIN - (0 - 10Vpp).
-// RISE - Slew rise (left = exponencial, right = linear).
-// FALL - Slew fall.
-// FOLD - Wavefolding (left = minus, right = plus)?
-// - V1.1 Manual inculed Effects section. 
 //
 // V1.2:
 // - onRandomize.
@@ -191,14 +185,10 @@ struct Wolfram : Module {
 	std::array<AlgoEngine*, NUM_ENGINES> engine{};
 	std::array<EngineCoreParams, NUM_ENGINES> engineCoreParams{};
 	std::array<EngineMenuParams, NUM_ENGINES> engineMenuParams{};
-	static constexpr int engineDefault = 0;
+	static constexpr int engineDefault = 0; // TODO: rename engineDefaultIdx?
 	int engineSelect = engineDefault;
 	float syncedEngineCv = 0;
 	int engineIndex = 0;
-
-	// FX chain
-	std::array<FxChain, 2> fxChain;
-	FX activeFx = FX::Gain;
 
 	// UI
 	static constexpr int ENGINE_TO_UI_UPDATE_INTERVAL = 512; // TODO: needs updating onSamplerateChange.
@@ -232,7 +222,7 @@ struct Wolfram : Module {
 	float prevStepVoltage = 0.f;
 
 	// DSP
-	std::array<float, 2> out{};
+	EngineOutput output;
 	std::array<float, 2> audioOut{};
 	int srate = 44100;	
 	dsp::PulseGenerator xPulse, yPulse;
@@ -240,6 +230,10 @@ struct Wolfram : Module {
 	dsp::BooleanTrigger menuTrigger, modeTrigger;
 	dsp::Timer ruleDisplayTimer;
 	dsp::RCFilter dcFilter[2];
+
+	// FX chain
+	std::array<FxChain, 2> fxChain;
+	FX activeFx = FX::Gain;
 
 	Wolfram() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
@@ -648,34 +642,31 @@ struct Wolfram : Module {
 		engineCoreParams[engineIndex].inject = injectState;
 		
 		// OUTPUTS
-		out.fill(0.0f);
+		output = {};
 		audioOut.fill(0.0f);
-		bool xBit = false;
-		bool yBit = false;
-		float modeLED = 0.0f;
-	
+
 		for (int i = 0; i < NUM_ENGINES; i++)
 			engine[i]->updateMenuParams(engineMenuParams[i]);
 
-		engine[engineIndex]->process(engineCoreParams[engineIndex], out, &xBit, &yBit, &modeLED);
+		engine[engineIndex]->process(engineCoreParams[engineIndex], output);
 
 		// CV outputs - 0V to 10V or -5V to 5V in Audio Rate Mode (10Vpp)
 		for (size_t i = 0; i < fxChain.size(); i++) {
 			bool xChannel = (i == 0);
 			fxChain[i].gain.set(xChannel ? params[X_GAIN_PARAM].getValue() : params[Y_GAIN_PARAM].getValue());
 			fxChain[i].slew.set(xChannel ? params[X_SLEW_PARAM].getValue() : params[Y_SLEW_PARAM].getValue());
-			fxChain[i].process(out[i]);
-			dcFilter[i].process(out[i]);
+			fxChain[i].process(output.voltage[i]);
+			dcFilter[i].process(output.voltage[i]);
 			audioOut[i] = dcFilter[i].highpass();
 		}
 		
-		outputs[X_OUTPUT].setVoltage((audioRateMode ? audioOut[0] : out[0]) * 10.0f);
-		outputs[Y_OUTPUT].setVoltage((audioRateMode ? audioOut[1] : out[1]) * 10.0f);
+		outputs[X_OUTPUT].setVoltage((audioRateMode ? audioOut[0] : output.voltage[0]) * 10.0f);
+		outputs[Y_OUTPUT].setVoltage((audioRateMode ? audioOut[1] : output.voltage[1]) * 10.0f);
 
 		// Pulse outputs (0V to 10V)
-		if (xBit)
+		if (output.xBit)
 			xPulse.trigger(audioRateMode ? args.sampleTime : 1e-3f);
-		if (yBit)
+		if (output.yBit)
 			yPulse.trigger(audioRateMode ? args.sampleTime : 1e-3f);
 
 		bool xGate = xPulse.process(args.sampleTime);
@@ -684,9 +675,9 @@ struct Wolfram : Module {
 		outputs[Y_PULSE_OUTPUT].setVoltage(yGate ? 10.f : 0.f);
 
 		// LIGHTS
-		lights[MODE_LIGHT].setBrightnessSmooth(modeLED, args.sampleTime);
-		lights[X_LIGHT].setBrightness(out[0] * 0.1f);
-		lights[Y_LIGHT].setBrightness(out[1] * 0.1f);
+		lights[MODE_LIGHT].setBrightnessSmooth(output.modeLED, args.sampleTime);
+		lights[X_LIGHT].setBrightness(output.voltage[0] * 0.1f);
+		lights[Y_LIGHT].setBrightness(output.voltage[1] * 0.1f);
 		lights[X_PULSE_LIGHT].setBrightnessSmooth(xGate, args.sampleTime);
 		lights[Y_PULSE_LIGHT].setBrightnessSmooth(yGate, args.sampleTime);
 		

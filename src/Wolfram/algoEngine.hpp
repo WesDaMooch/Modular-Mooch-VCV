@@ -11,17 +11,14 @@
 #include <array>
 #include <cstdint>
 
-// TODO:
-// - process() should be defined in algoEngine or in Wolfram module <- a better idea,
-// with functions such as generate(), inject() ect defined in child algoithms.
-// process() can just give output voltages, pulses, and modeLED.
-// 
+// TODO: 
 // The current reset() may need renameing initialize(),
 // and could be called in constuctor to remove repeated code
 
 static constexpr int MAX_SEQUENCE_LENGTH = 64;
 
 struct EngineMenuParams {
+	// TODO: make enum class
 	enum MenuDeltas{
 		RULE_DELTA,
 		SEED_DELTA,
@@ -50,6 +47,13 @@ struct EngineCoreParams {
 	bool miniMenuChanged = false;
 };
 
+struct EngineOutput {
+	std::array<float, 2> voltage{};
+	bool xBit = false;
+	bool yBit = false;
+	float modeLED = 0.0f;
+};
+
 struct EngineToUiLayer {
 	// Used to take a snapshot of the engine's current values,
 	// to be safely read by the UI.
@@ -70,20 +74,13 @@ public:
 	virtual void updateDisplay(bool advance, size_t length = 8) = 0;
 	virtual void updateMenuParams(const EngineMenuParams& p) = 0;
 
-	virtual void process(const EngineCoreParams& p,
-		std::array<float, 2>& out, 
-		bool* xPulse, bool* yPulse, 
-		float* modeLED) = 0;
-
+	void process(const EngineCoreParams& p, EngineOutput& output);
 	virtual void reset() = 0;
 
 	// Save setters
 	void setReadHead(size_t newReadHead);
 	void setWriteHead(size_t newWriteHead);
-
-	virtual void setBufferFrame(uint64_t newFrame, int index, 
-		bool setDisplayMatrix = false) = 0;
-
+	virtual void setBufferFrame(uint64_t newFrame, int index, bool setDisplayMatrix = false) = 0;
 	virtual void setRuleSelect(int newRule) = 0;
 	virtual void setRuleCv(float newRuleCv) = 0;
 	virtual void setSeed(int newSeed) = 0;
@@ -92,11 +89,7 @@ public:
 	// Save getters 
 	int getReadHead();
 	int getWriteHead();
-
-	virtual uint64_t getBufferFrame(int index,
-		bool getDisplayMatrix = false,
-		bool getDisplayMatrixSave = false) = 0;
-
+	virtual uint64_t getBufferFrame(int index, bool getDisplayMatrix = false, bool getDisplayMatrixSave = false) = 0;
 	virtual int getRuleSelect() = 0;
 	virtual int getSeed() = 0;
 	virtual int getMode() = 0;
@@ -119,10 +112,13 @@ protected:
 	bool resetPending = false;
 	bool generate = false;
 	bool seedResetPending = false;
-	char engineLabel[5] = "BASE";
+	char engineLabel[5] = "";
 
+	virtual void onGenerate() = 0;
+	virtual void resetToSeed(bool sync) = 0;
 	virtual void inject(int inject, bool sync) = 0;
 	virtual void onRuleChange() = 0;
+	virtual void renderOutput(EngineOutput& output) = 0;
 
 	// Helpers
 	inline void advanceHeads(size_t length) {

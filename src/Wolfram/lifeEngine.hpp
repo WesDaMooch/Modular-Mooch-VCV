@@ -16,11 +16,6 @@ public:
 	void updateDisplay(bool advance, size_t length = 8) override;
 	void updateMenuParams(const EngineMenuParams& p) override;
 
-	void process(const EngineCoreParams& p,
-		std::array<float, 2>& out,
-		bool* xPulse, bool* yPulse,
-		float* modeLED) override;
-
 	void reset() override;
 
 	// Save setters
@@ -86,8 +81,11 @@ protected:
 	static constexpr float yVoltageScaler = 1.f / UINT64_MAX;
 	static constexpr float modesScaler = 1.f / (static_cast<float>(NUM_MODES) - 1.f);
 
+	void onGenerate() override;
+	void resetToSeed(bool sync) override;
 	void inject(int inject, bool sync) override;
 	void onRuleChange() override;
+	void renderOutput(EngineOutput& output) override;
 
 	// Helpers
 	static inline void halfadder(uint8_t a, uint8_t b,
