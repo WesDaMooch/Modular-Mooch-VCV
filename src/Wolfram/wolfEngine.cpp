@@ -17,7 +17,7 @@ const char WolfEngine::modeLabel[WolfEngine::NUM_MODES][5] = {
 
 
 WolfEngine::WolfEngine() {
-	memcpy(engineLabel, "WOLF", 5);
+	snprintf(engineLabel, 5, "%4s", "WOLF");
 	rowBuffer[readHead] = seed;
 	updateDisplay(false);
 }
@@ -103,7 +103,7 @@ void WolfEngine::onGenerate() {
 
 
 void WolfEngine::resetToSeed(bool sync) {
-	int head = sync ? writeHead : readHead;
+	size_t head = sync ? writeHead : readHead;
 	uint8_t resetRow = randSeed ? rack::random::get<uint8_t>() : seed;
 	rowBuffer[head] = resetRow;
 }
@@ -172,7 +172,7 @@ void WolfEngine::renderOutput(EngineOutput& output) {
 }
 
 
-void WolfEngine::reset() {
+void WolfEngine::reinitialise() {
 	for (int i = 0; i < MAX_SEQUENCE_LENGTH; i++)
 		setBufferFrame(0, i);
 
@@ -185,6 +185,82 @@ void WolfEngine::reset() {
 
 	rowBuffer[readHead] = seed;
 	updateDisplay(false);
+}
+
+
+void WolfEngine::process(const EngineCoreParams& p, EngineOutput& output) {
+
+	// Sequencer
+	bool refreshDisplay = p.step;
+	bool syncStep = p.sync && p.step;
+	generate = rack::random::get<float>() < p.probability;
+
+	if (!p.sync || (syncStep))
+		setRuleCv(p.ruleCv);
+
+	bool injectOccured = (p.inject != 0);
+	if (injectOccured && p.sync)
+		injectPending += p.inject;
+
+	// Non-sync inject
+	if (injectOccured && !p.sync) {
+		inject(p.inject, p.sync);
+		refreshDisplay = true;
+	}
+
+	// Reset
+	bool seedReset = (p.miniMenuChanged && generate) && !p.sync;
+
+	if (p.miniMenuChanged && p.sync)
+		seedResetPending = true;
+
+	if (p.reset && p.sync)
+		resetPending = true;
+
+	if (((p.reset || seedReset) && !p.sync) || ((resetPending || seedResetPending) && syncStep)) {
+		if (generate) {
+			resetToSeed(p.sync);
+			generate = false;
+		}
+		else if (!seedResetPending) {
+			// Sequence reset
+			if (p.sync) {
+				writeHead = 0;
+			}
+			else {
+				readHead = 0;
+				writeHead = 1;
+			}
+		}
+		resetPending = false;
+		seedResetPending = false;
+		refreshDisplay = true;
+	}
+
+	// Generate
+	if (generate && p.step)
+		onGenerate();
+	
+	// Sync inject
+	if (injectPending && syncStep) {
+		inject(injectPending, p.sync);
+		injectPending = 0;
+	}
+
+	// Offset
+	int newOffset = p.offset - 4;
+	if ((!p.sync && (offset != newOffset)) || syncStep) {
+		offset = newOffset;
+		refreshDisplay = true;
+	}
+
+	// Update
+	if (refreshDisplay)
+		updateDisplay(p.step, p.length);
+
+	// Render output
+	renderOutput(output);
+	displayMatrixUpdated = false;
 }
 
 
@@ -241,10 +317,7 @@ void WolfEngine::setMode(int newMode) {
 
 
 // Save getters
-uint64_t WolfEngine::getBufferFrame(int index, 
-	bool getDisplayMatrix, 
-	bool getDisplayMatrixSave) {
-
+uint64_t WolfEngine::getBufferFrame(int index, bool getDisplayMatrix, bool getDisplayMatrixSave) {
 	if (getDisplayMatrix)
 		return displayMatrix;
 	else if (getDisplayMatrixSave)
@@ -281,12 +354,12 @@ void WolfEngine::getRuleSelectLabel(char out[5]) {
 	snprintf(out, 5, "%4d", ruleSelect);
 }
 
-
+// TODO: use snprintf?
 void WolfEngine::getSeedLabel(char out[5]) {
-	memcpy(out, "    ", 5);
+	snprintf(out, 5, "%4s", "");
 }
 
 
 void WolfEngine::getModeLabel(char out[5]) {
-	memcpy(out, modeLabel[modeIndex], 5);
+	snprintf(out, 5, "%4s", modeLabel[modeIndex]);
 }

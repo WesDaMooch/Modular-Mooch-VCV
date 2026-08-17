@@ -16,22 +16,18 @@ public:
 	void updateDisplay(bool advance, size_t length = 8) override;
 	void updateMenuParams(const EngineMenuParams& p) override;
 
-	void reset() override;
+	void reinitialise() override;
+	void process(const EngineCoreParams& p, EngineOutput& output) override;
 
 	// Save setters
-	void setBufferFrame(uint64_t newFrame, int index, 
-		bool setDisplayMatrix = false) override;
-
+	void setBufferFrame(uint64_t newFrame, int index, bool setDisplayMatrix = false) override;
 	void setRuleSelect(int newRule) override;
 	void setRuleCv(float newRuleCv) override;
 	void setSeed(int newSeed) override;
 	void setMode(int newMode) override;
 
 	// Save getters 
-	uint64_t getBufferFrame(int index, 
-		bool getDisplayMatrix = false,
-		bool getDisplayMatrixSave = false) override;
-
+	uint64_t getBufferFrame(int index, bool getDisplayMatrix = false, bool getDisplayMatrixSave = false) override;
 	int getRuleSelect() override;
 	int getSeed() override;
 	int getMode() override;
@@ -81,13 +77,16 @@ protected:
 	static constexpr float yVoltageScaler = 1.f / UINT64_MAX;
 	static constexpr float modesScaler = 1.f / (static_cast<float>(NUM_MODES) - 1.f);
 
-	void onGenerate() override;
-	void resetToSeed(bool sync) override;
-	void inject(int inject, bool sync) override;
-	void onRuleChange() override;
-	void renderOutput(EngineOutput& output) override;
+	void onGenerate();
+	void resetToSeed(bool sync);
+	void inject(int inject, bool sync);
+	void onRuleChange();
+	void renderOutput(EngineOutput& output);
 
 	// Helpers
+	static uint8_t reverseRow(uint8_t row);
+	void getHorizontalNeighbours(uint8_t row, uint8_t& west, uint8_t& east);
+
 	static inline void halfadder(uint8_t a, uint8_t b,
 		uint8_t& sum, uint8_t& carry) {
 		sum = a ^ b;
@@ -102,7 +101,4 @@ protected:
 		halfadder(t0, c, sum, t2);
 		carry = t2 | t1;
 	}
-
-	static uint8_t reverseRow(uint8_t row);
-	void getHorizontalNeighbours(uint8_t row, uint8_t& west, uint8_t& east);
 };

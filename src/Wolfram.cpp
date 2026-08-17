@@ -25,6 +25,8 @@
 // the amount of effect that is applied is contolled by the Scale params.
 // See Audible Instruments Macro Oscillator 2 for multi-purpose knobs with dynamic tool tips.
 //
+// Life algo 'Death' pulse happens for 2 step oscilations
+// 
 // V1.2:
 // - onRandomize.
 // - New Effects: 
@@ -43,6 +45,7 @@
 #include "Wolfram/algoEngine.hpp"
 #include "Wolfram/wolfEngine.hpp"
 #include "Wolfram/lifeEngine.hpp"
+#include "Wolfram/markovEngine.hpp"
 #include <string>
 #include <atomic>
 #include <cstdio>
@@ -50,7 +53,7 @@
 #include <cstdlib>
 #include <inttypes.h>
 
-static constexpr int NUM_ENGINES = 2;
+static constexpr int NUM_ENGINES = 3;
 static constexpr int NUM_MENU_PAGES = 4;
 static constexpr int NUM_DISPLAY_STYLES = 5;
 static constexpr int NUM_CELL_STYLES = 2;
@@ -182,6 +185,7 @@ struct Wolfram : Module {
 	// Engine
 	WolfEngine wolfEngine;
 	LifeEngine lifeEngine;
+	MarkovEngine markovEngine;
 	std::array<AlgoEngine*, NUM_ENGINES> engine{};
 	std::array<EngineCoreParams, NUM_ENGINES> engineCoreParams{};
 	std::array<EngineMenuParams, NUM_ENGINES> engineMenuParams{};
@@ -274,6 +278,7 @@ struct Wolfram : Module {
 		// Load engines
 		engine[0] = &wolfEngine;
 		engine[1] = &lifeEngine;
+		engine[2] = &markovEngine;
 
 		onSampleRateChange();
 		
@@ -334,7 +339,7 @@ struct Wolfram : Module {
 			chain.reset();
 		
 		for (size_t i = 0; i < NUM_ENGINES; i++)
-			engine[i]->reset();
+			engine[i]->reinitialise();
 		
 		displayStyleIndex = 0;
 		cellStyleIndex = 0;
@@ -1309,7 +1314,7 @@ struct WolframModuleWidget : ModuleWidget {
 		
 		menu->addChild(new MenuSeparator);
 		menu->addChild(createIndexSubmenuItem("Algorithm",
-			{ "Wolf", "Life" },
+			{ "Wolf", "Life", "Markov"},
 			[=]() {
 				return module->engineSelect;
 			},

@@ -337,7 +337,7 @@ void LifeEngine::renderOutput(EngineOutput& output) {
 }
 
 
-void LifeEngine::reset() {
+void LifeEngine::reinitialise() {
 	for (int i = 0; i < MAX_SEQUENCE_LENGTH; i++)
 		setBufferFrame(0, i);
 
@@ -351,6 +351,82 @@ void LifeEngine::reset() {
 	updateDisplay(false);
 }
 
+
+void LifeEngine::process(const EngineCoreParams& p, EngineOutput& output) {
+
+	// Sequencer
+	bool refreshDisplay = p.step;
+	bool syncStep = p.sync && p.step;
+	generate = rack::random::get<float>() < p.probability;
+
+	if (!p.sync || (syncStep))
+		setRuleCv(p.ruleCv);
+
+	bool injectOccured = (p.inject != 0);
+	if (injectOccured && p.sync)
+		injectPending += p.inject;
+
+	// Non-sync inject
+	if (injectOccured && !p.sync) {
+		inject(p.inject, p.sync);
+		refreshDisplay = true;
+	}
+
+	// Reset
+	bool seedReset = (p.miniMenuChanged && generate) && !p.sync;
+
+	if (p.miniMenuChanged && p.sync)
+		seedResetPending = true;
+
+	if (p.reset && p.sync)
+		resetPending = true;
+
+	if (((p.reset || seedReset) && !p.sync) || ((resetPending || seedResetPending) && syncStep)) {
+		if (generate) {
+			resetToSeed(p.sync);
+			generate = false;
+		}
+		else if (!seedResetPending) {
+			// Sequence reset
+			if (p.sync) {
+				writeHead = 0;
+			}
+			else {
+				readHead = 0;
+				writeHead = 1;
+			}
+		}
+		resetPending = false;
+		seedResetPending = false;
+		refreshDisplay = true;
+	}
+
+	// Generate
+	if (generate && p.step)
+		onGenerate();
+	
+
+	// Sync inject
+	if (injectPending && syncStep) {
+		inject(injectPending, p.sync);
+		injectPending = 0;
+	}
+
+	// Offset
+	int newOffset = p.offset - 4;
+	if ((!p.sync && (offset != newOffset)) || syncStep) {
+		offset = newOffset;
+		refreshDisplay = true;
+	}
+
+	// Update
+	if (refreshDisplay)
+		updateDisplay(p.step, p.length);
+
+	// Render output
+	renderOutput(output);
+	displayMatrixUpdated = false;
+}
 
 // Save setters
 void LifeEngine::setBufferFrame(uint64_t newFrame, int index, 
@@ -391,9 +467,7 @@ void LifeEngine::setMode(int newMode) {
 
 
 // Save getters
-uint64_t LifeEngine::getBufferFrame(int index, 
-	bool getDisplayMatrix ,
-	bool getDisplayMatrixSave) {
+uint64_t LifeEngine::getBufferFrame(int index, bool getDisplayMatrix ,bool getDisplayMatrixSave) {
 
 	if (getDisplayMatrix)
 		return displayMatrix;
@@ -423,22 +497,23 @@ int LifeEngine::getMode() {
 
 // UI getters
 void LifeEngine::getRuleActiveLabel(char out[5]) {
-	memcpy(out, rule[ruleIndex].label, 5);
+	snprintf(out, 5, "%4s", rule[ruleIndex].label);
+	//memcpy(out, rule[ruleIndex].label, 5);
 }
 
 
 void LifeEngine::getRuleSelectLabel(char out[5]) {
-	memcpy(out, rule[ruleSelect].label, 5);
+	snprintf(out, 5, "%4s", rule[ruleSelect].label);
 }
 
 
 void LifeEngine::getSeedLabel(char out[5]) {
-	memcpy(out, seed[seedIndex].label, 5);
+	snprintf(out, 5, "%4s", seed[seedIndex].label);
 }
 
 
 void LifeEngine::getModeLabel(char out[5]) {
-	memcpy(out, modeLabel[modeIndex], 5);
+	snprintf(out, 5, "%4s", modeLabel[modeIndex]);
 }
 
 

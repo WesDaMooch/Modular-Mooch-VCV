@@ -74,8 +74,8 @@ public:
 	virtual void updateDisplay(bool advance, size_t length = 8) = 0;
 	virtual void updateMenuParams(const EngineMenuParams& p) = 0;
 
-	void process(const EngineCoreParams& p, EngineOutput& output);
-	virtual void reset() = 0;
+	virtual void reinitialise() = 0;
+	virtual void process(const EngineCoreParams& p, EngineOutput& output) = 0;
 
 	// Save setters
 	void setReadHead(size_t newReadHead);
@@ -114,11 +114,11 @@ protected:
 	bool seedResetPending = false;
 	char engineLabel[5] = "";
 
-	virtual void onGenerate() = 0;
-	virtual void resetToSeed(bool sync) = 0;
-	virtual void inject(int inject, bool sync) = 0;
-	virtual void onRuleChange() = 0;
-	virtual void renderOutput(EngineOutput& output) = 0;
+	//virtual void onGenerate() = 0;
+	//virtual void resetToSeed(bool sync) = 0;
+	//virtual void inject(int inject, bool sync) = 0;
+	//virtual void onRuleChange() = 0;
+	//virtual void renderOutput(EngineOutput& output) = 0;
 
 	// Helpers
 	inline void advanceHeads(size_t length) {
