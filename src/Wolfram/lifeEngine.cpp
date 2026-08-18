@@ -88,7 +88,7 @@ const std::array<LifeEngine::Seed, LifeEngine::NUM_SEEDS> LifeEngine::seed{ {
 
 
 LifeEngine::LifeEngine() {
-	memcpy(engineLabel, "LIFE", 5);
+	snprintf(engineLabel, 5, "%4s", "LIFE");
 	matrixBuffer[readHead] = rack::random::get<uint64_t>();
 	updateDisplay(false);
 }

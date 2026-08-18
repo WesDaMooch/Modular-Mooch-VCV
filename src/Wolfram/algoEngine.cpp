@@ -36,7 +36,7 @@ int AlgoEngine::getWriteHead() {
 
 
 void AlgoEngine::getEngineLabel(char out[5]) {
-    memcpy(out, engineLabel, 5);
+    snprintf(out, 5, "%4s", engineLabel);
 }
 
 

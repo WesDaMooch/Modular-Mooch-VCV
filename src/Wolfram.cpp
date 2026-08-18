@@ -45,7 +45,6 @@
 #include "Wolfram/algoEngine.hpp"
 #include "Wolfram/wolfEngine.hpp"
 #include "Wolfram/lifeEngine.hpp"
-#include "Wolfram/markovEngine.hpp"
 #include <string>
 #include <atomic>
 #include <cstdio>
@@ -53,7 +52,7 @@
 #include <cstdlib>
 #include <inttypes.h>
 
-static constexpr int NUM_ENGINES = 3;
+static constexpr int NUM_ENGINES = 2;
 static constexpr int NUM_MENU_PAGES = 4;
 static constexpr int NUM_DISPLAY_STYLES = 5;
 static constexpr int NUM_CELL_STYLES = 2;
@@ -185,7 +184,6 @@ struct Wolfram : Module {
 	// Engine
 	WolfEngine wolfEngine;
 	LifeEngine lifeEngine;
-	MarkovEngine markovEngine;
 	std::array<AlgoEngine*, NUM_ENGINES> engine{};
 	std::array<EngineCoreParams, NUM_ENGINES> engineCoreParams{};
 	std::array<EngineMenuParams, NUM_ENGINES> engineMenuParams{};
@@ -278,7 +276,6 @@ struct Wolfram : Module {
 		// Load engines
 		engine[0] = &wolfEngine;
 		engine[1] = &lifeEngine;
-		engine[2] = &markovEngine;
 
 		onSampleRateChange();
 		
@@ -1314,7 +1311,7 @@ struct WolframModuleWidget : ModuleWidget {
 		
 		menu->addChild(new MenuSeparator);
 		menu->addChild(createIndexSubmenuItem("Algorithm",
-			{ "Wolf", "Life", "Markov"},
+			{ "Wolf", "Life"},
 			[=]() {
 				return module->engineSelect;
 			},
