@@ -6,19 +6,17 @@
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
 // License: GPL-3.0-or-later
 
+
 #pragma once
 #include "../plugin.hpp"
 #include <array>
 #include <cstdint>
 
-// TODO: 
-// The current reset() may need renameing initialize(),
-// and could be called in constuctor to remove repeated code
 
 static constexpr int MAX_SEQUENCE_LENGTH = 64;
 
+
 struct EngineMenuParams {
-	// TODO: make enum class
 	enum MenuDeltas{
 		RULE_DELTA,
 		SEED_DELTA,
@@ -35,6 +33,7 @@ struct EngineMenuParams {
 	std::array<bool, RESET_LEN> menuReset{};
 };
 
+
 struct EngineCoreParams {
 	float ruleCv = 0.f;
 	float probability = 0.f;
@@ -47,12 +46,14 @@ struct EngineCoreParams {
 	bool miniMenuChanged = false;
 };
 
+
 struct EngineOutput {
 	std::array<float, 2> voltage{};
 	bool xBit = false;
 	bool yBit = false;
 	float modeLED = 0.0f;
 };
+
 
 struct EngineToUiLayer {
 	// Used to take a snapshot of the engine's current values,
@@ -65,6 +66,7 @@ struct EngineToUiLayer {
 	char seedLabel[5]{};
 	char modeLabel[5]{};
 };
+
 
 class AlgoEngine {
 public:
@@ -114,13 +116,8 @@ protected:
 	bool seedResetPending = false;
 	char engineLabel[5] = "";
 
-	//virtual void onGenerate() = 0;
-	//virtual void resetToSeed(bool sync) = 0;
-	//virtual void inject(int inject, bool sync) = 0;
-	//virtual void onRuleChange() = 0;
-	//virtual void renderOutput(EngineOutput& output) = 0;
+	uint8_t applyOffset(uint8_t inputRow, int inputOffset);
 
-	// Helpers
 	inline void advanceHeads(size_t length) {
 		readHead = writeHead;
 		writeHead += 1;
@@ -143,6 +140,4 @@ protected:
 
 		return (value + delta + maxValue) % maxValue;
 	}
-
-	uint8_t applyOffset(uint8_t inputRow, int inputOffset);
 };

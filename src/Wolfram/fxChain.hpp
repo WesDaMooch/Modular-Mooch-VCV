@@ -1,6 +1,15 @@
+// fxChain.hpp
+// Part of the Modular Mooch Wolfram module (VCV Rack)
+//
+// GitHub: https://github.com/WesDaMooch/Modular-Mooch-VCV
+// 
+// Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
+// License: GPL-3.0-or-later
+
 #pragma once
 #include <cmath>
 #include <algorithm>
+
 
 enum class FX
 {

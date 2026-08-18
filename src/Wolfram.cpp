@@ -5,7 +5,8 @@
 // 
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
 // License: GPL-3.0-or-later
-//
+
+
 // TSKVFZSIFXEOZSVEDMJLTLTHBEDGGNDZTXOVELCGOHRIEXENGKTSGX
 // UYEPQIOENITZSWXZOOLSSZNALTNNKKJMEASGIYISNGAZSULJGFTFLC
 // LXOAVSSKUVAMYEUYOUEZKMAYJIWVRGLAIYMEOUKVGPAMYSMLTMDRNZ
@@ -13,32 +14,20 @@
 // PTSBNPBISPPPWGOXKRPEAESROYZLFSAAALOQZLBKSGKMEX
 
 
-
-
 // PLANNED UPDATES:
 //
 // TODO: figure out if the EngineToUiLayer is the best way to do share data.
-//
-// V1.1:
-// - Replace Slew menu page with FX page. DONE
-// here an effect can be selected that is applied to the output,
-// the amount of effect that is applied is contolled by the Scale params.
-// See Audible Instruments Macro Oscillator 2 for multi-purpose knobs with dynamic tool tips.
 //
 // Life algo 'Death' pulse happens for 2 step oscilations
 // 
 // V1.2:
 // - onRandomize.
-// - New Effects: 
-// XMOD - some cross modulation with the other output (left = ?, right = ?).
 //
 // V2:
 // - Polyphonic engines, multiple outputs
 // or an expander which opens up all Algos at once. 
 //
 // New algos!
-// A true Oscillator mode could use the algos to generate wavetables.
-
 
 
 #include "Wolfram/fxChain.hpp"
@@ -51,6 +40,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <inttypes.h>
+
 
 static constexpr int NUM_ENGINES = 2;
 static constexpr int NUM_MENU_PAGES = 4;
@@ -73,6 +63,7 @@ static std::string packUint64Array(const uint64_t* data, size_t count) {
 
 	return out;
 }
+
 
 static void unpackUint64Array(const char* str, uint64_t* data, size_t count) {
 	// Unpack string to buffer 
@@ -643,7 +634,7 @@ struct Wolfram : Module {
 			injectState = -1;
 		engineCoreParams[engineIndex].inject = injectState;
 		
-		// OUTPUTS
+		// Outputs
 		output = {};
 		audioOut.fill(0.0f);
 

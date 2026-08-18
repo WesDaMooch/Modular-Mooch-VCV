@@ -6,6 +6,7 @@
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
 // License: GPL-3.0-or-later
 
+
 #include "algoEngine.hpp"
 
 
@@ -39,8 +40,7 @@ void AlgoEngine::getEngineLabel(char out[5]) {
     snprintf(out, 5, "%4s", engineLabel);
 }
 
-
-// Helpers
+// Internal
 uint8_t AlgoEngine::applyOffset(uint8_t inputRow, int inputOffset) {
     int shift = inputOffset % 8;
     if (shift > 3)

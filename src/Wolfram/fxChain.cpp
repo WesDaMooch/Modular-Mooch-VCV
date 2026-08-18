@@ -1,5 +1,12 @@
-#include "fxChain.hpp"
+// fxChain.cpp
+// Part of the Modular Mooch Wolfram module (VCV Rack)
+//
+// GitHub: https://github.com/WesDaMooch/Modular-Mooch-VCV
+// 
+// Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
+// License: GPL-3.0-or-later
 
+#include "fxChain.hpp"
 
 // Gain
 Gain::Gain() {
