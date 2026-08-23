@@ -51,6 +51,10 @@ protected:
 		uint64_t value;
 	};
 
+	// Bitwise addition
+	std::array<uint8_t, 10> row{};
+	std::array<uint8_t, 9> alive{};
+
 	std::array<uint64_t, MAX_SEQUENCE_LENGTH> matrixBuffer{};
 
 	static constexpr int NUM_MODES = 4;
@@ -72,7 +76,9 @@ protected:
 
 	int population = 0;
 	int prevPopulation = 0;
-	uint64_t prevOutputMatrix = 0;
+	uint64_t prevOutputMatrixZ1 = 0;
+	uint64_t prevOutputMatrixZ2 = 0;
+	uint64_t prevOutputMatrixZ3 = 0;
 	bool prevYbit = false;
 
 	static constexpr float xVoltageScaler = 1.f / 64.f;

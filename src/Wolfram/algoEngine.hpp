@@ -35,15 +35,16 @@ struct EngineMenuParams {
 
 
 struct EngineCoreParams {
-	float ruleCv = 0.f;
-	float probability = 0.f;
+	bool sync = false;
+	bool step = false;
+	bool reset = false;
+	bool encoderReset = false;
+	bool miniMenuChanged = false;
 	size_t length = 0;
 	int offset = 0;
 	int inject = 0;
-	bool step = false;
-	bool reset = false;
-	bool sync = false;
-	bool miniMenuChanged = false;
+	float probability = 0.f;
+	float ruleCv = 0.f;
 };
 
 

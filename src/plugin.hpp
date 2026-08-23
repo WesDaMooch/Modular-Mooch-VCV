@@ -1,11 +1,13 @@
 #pragma once
 #include <rack.hpp>
 
+
 using namespace rack;
 
 extern Plugin* pluginInstance;
 
 extern Model* modelWolfram;
+
 
 // Custom components
 struct M1900hBlackKnob : RoundKnob {
@@ -19,6 +21,7 @@ struct M1900hBlackKnob : RoundKnob {
 	}
 };
 
+
 struct M1900hBlackEncoder : RoundKnob {
 	widget::SvgWidget* fg;
 
@@ -29,6 +32,23 @@ struct M1900hBlackEncoder : RoundKnob {
 		fg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/M1900hKnob_fg.svg")));
 	}
 };
+
+
+struct TrimpotGreen : app::SvgKnob {
+	widget::SvgWidget* bg;
+
+	TrimpotGreen() {
+		minAngle = -0.75 * M_PI;
+		maxAngle = 0.75 * M_PI;
+
+		bg = new widget::SvgWidget;
+		fb->addChildBelow(bg, tw);
+
+		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/TrimpotGreen.svg")));
+		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/TrimpotGreen_bg.svg")));
+	}
+};
+
 
 struct BananutBlack : app::SvgPort {
 	// Befaco style

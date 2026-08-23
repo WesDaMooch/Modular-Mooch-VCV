@@ -208,8 +208,9 @@ void WolfEngine::process(const EngineCoreParams& p, EngineOutput& output) {
 		refreshDisplay = true;
 	}
 
-	// Reset
-	bool seedReset = (p.miniMenuChanged && generate) && !p.sync;
+	// Reset to seed
+	//bool seedReset = (p.miniMenuChanged && generate) && !p.sync;
+	bool seedReset = ((p.miniMenuChanged || p.encoderReset) && generate) && !p.sync;
 
 	if (p.miniMenuChanged && p.sync)
 		seedResetPending = true;
@@ -354,7 +355,7 @@ void WolfEngine::getRuleSelectLabel(char out[5]) {
 	snprintf(out, 5, "%4d", ruleSelect);
 }
 
-// TODO: use snprintf?
+
 void WolfEngine::getSeedLabel(char out[5]) {
 	snprintf(out, 5, "%4s", "");
 }

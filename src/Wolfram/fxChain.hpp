@@ -6,6 +6,7 @@
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
 // License: GPL-3.0-or-later
 
+
 #pragma once
 #include <cmath>
 #include <algorithm>

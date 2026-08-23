@@ -145,7 +145,7 @@ void LifeEngine::onGenerate() {
 	uint64_t writeMatrix = 0;
 
 	// Eight matrix rows + top & bottom padding
-	std::array<uint8_t, 10> row{};
+	row.fill(0);
 
 	// Fill rows from current matrix
 	for (int i = 1; i < 9; i++)
@@ -207,7 +207,7 @@ void LifeEngine::onGenerate() {
 		uint8_t NCbit1 = 0, NCbit2 = 0;
 		fulladder(Nbit1, Cbit1, carry1, NCbit1, NCbit2);
 
-		// (north_current row sum)   + south row sum	 = full neighbour sum
+		// (north & current row sum) + south row sum	 = full neighbour sum
 		// (NCbit0, NCbit1, NCbit2)  + (0, Sbit1, Sbit0) = NCSbit3, NCSbit2, NCSbit1, NCSbit0
 		uint8_t NCSbit0 = 0, carry2 = 0;
 		fulladder(NCbit0, Sbit0, 0, NCSbit0, carry2);
@@ -217,7 +217,7 @@ void LifeEngine::onGenerate() {
 		fulladder(NCbit2, 0, carry3, NCSbit2, NCSbit3);
 
 		// MSB <- -> LSB
-		std::array<uint8_t, 9> alive{};
+		alive.fill(0);
 		alive[0] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & ~NCSbit1 & ~NCSbit0);	// 0 0000
 		alive[1] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & ~NCSbit1 & NCSbit0);	// 1 0001
 		alive[2] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & NCSbit1 & ~NCSbit0);	// 2 0010
@@ -322,16 +322,25 @@ void LifeEngine::renderOutput(EngineOutput& output) {
 	// Y - Returns the 64-bit number display matrix scaled to 0 - 1
 	output.voltage[1] = displayMatrix * yVoltageScaler;
 
-	// X Pulse - True if population (number of alive cells) has grown
-	if (displayMatrixUpdated && (population > prevPopulation))
-		output.xBit = true;
-	prevPopulation = population;
+	if (displayMatrixUpdated) {
+		// X Pulse - True if population (number of alive cells) has grown
+		if (population > prevPopulation)
+			output.xBit = true;
 
-	// Y Pulse - True if life becomes stagnant (no change occurs),
-	// also true if output repeats while looping
-	if (displayMatrixUpdated && (displayMatrix == prevOutputMatrix))
-		output.yBit = true;
-	prevOutputMatrix = displayMatrix;
+		prevPopulation = population;
+
+		// Y Pulse - True if life becomes stagnant (no change occurs),
+		// also true if output repeats while looping (A B A B...)
+		bool stagnant = displayMatrix == prevOutputMatrixZ1;
+		bool repeating = (displayMatrix == prevOutputMatrixZ2) && (prevOutputMatrixZ1 == prevOutputMatrixZ3);
+
+		if (stagnant || repeating)
+			output.yBit = true;
+
+		prevOutputMatrixZ3 = prevOutputMatrixZ2;
+		prevOutputMatrixZ2 = prevOutputMatrixZ1;
+		prevOutputMatrixZ1 = displayMatrix;
+	}
 
 	// Mode LED brightness
 	output.modeLED = static_cast<float>(modeIndex) * modesScaler;
@@ -373,8 +382,8 @@ void LifeEngine::process(const EngineCoreParams& p, EngineOutput& output) {
 		refreshDisplay = true;
 	}
 
-	// Reset
-	bool seedReset = (p.miniMenuChanged && generate) && !p.sync;
+	// Reset to seed
+	bool seedReset = ((p.miniMenuChanged || p.encoderReset) && generate) && !p.sync;
 
 	if (p.miniMenuChanged && p.sync)
 		seedResetPending = true;
@@ -499,7 +508,6 @@ int LifeEngine::getMode() {
 // UI getters
 void LifeEngine::getRuleActiveLabel(char out[5]) {
 	snprintf(out, 5, "%4s", rule[ruleIndex].label);
-	//memcpy(out, rule[ruleIndex].label, 5);
 }
 
 
