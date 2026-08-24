@@ -6,7 +6,9 @@
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
 // License: GPL-3.0-or-later
 
+
 #include "lifeEngine.hpp"
+
 
 const char LifeEngine::modeLabel[LifeEngine::NUM_MODES][5] = {
 	"CLIP",	// A plane bounded by 0s
@@ -14,6 +16,7 @@ const char LifeEngine::modeLabel[LifeEngine::NUM_MODES][5] = {
 	"BOTL",	// Klein bottle - One pair of opposite edges are reversed
 	"RAND"	// Plane is bounded by randomness
 };
+
 
 const std::array<LifeEngine::Rule, LifeEngine::NUM_RULES> LifeEngine::rule{ {
 	// Rules from the Hatsya catagolue & LifeWiki
@@ -49,6 +52,7 @@ const std::array<LifeEngine::Rule, LifeEngine::NUM_RULES> LifeEngine::rule{ {
 	{ "24/7", 0x3B1C8U },	// Day & Night				B3678/S34678	
 } };
 
+
 const std::array<LifeEngine::Seed, LifeEngine::NUM_SEEDS> LifeEngine::seed{ {
 	// Seeds from the Life Lexicon, Hatsya catagolue & LifeWiki
 	{ "WING", 0x1824140C0000ULL },		// Wing									Rule: Life
@@ -83,11 +87,13 @@ const std::array<LifeEngine::Seed, LifeEngine::NUM_SEEDS> LifeEngine::seed{ {
 	{ "34C3", 0x3C2464140000ULL },		// 3-4 Life Spaceship 					Rule: 3-4 Life
 } };
 
+
 LifeEngine::LifeEngine() {
-	memcpy(engineLabel, "LIFE", 5);
+	snprintf(engineLabel, 5, "%4s", "LIFE");
 	matrixBuffer[readHead] = rack::random::get<uint64_t>();
 	updateDisplay(false);
 }
+
 
 void LifeEngine::updateDisplay(bool advance, size_t length) {
 	if (advance)
@@ -105,6 +111,174 @@ void LifeEngine::updateDisplay(bool advance, size_t length) {
 	population = __builtin_popcountll(displayMatrix);
 	displayMatrixUpdated = true;
 }
+
+
+void LifeEngine::updateMenuParams(const EngineMenuParams& p) {
+	// Rule
+	int newRuleSelect = updateSelect(p.menuDelta[EngineMenuParams::RULE_DELTA],
+		p.menuReset[EngineMenuParams::RULE_RESET],
+		ruleSelect, ruleDefault, NUM_RULES);
+	setRuleSelect(newRuleSelect);
+
+	// Seed
+	int newSeedSelect = updateSelect(p.menuDelta[EngineMenuParams::SEED_DELTA],
+		p.menuReset[EngineMenuParams::SEED_RESET],
+		seedIndex, seedDefault, NUM_SEEDS);
+	setSeed(newSeedSelect);
+
+	// Mode
+	int newModeSelect = updateSelect(p.menuDelta[EngineMenuParams::MODE_DELTA],
+		p.menuReset[EngineMenuParams::MODE_RESET],
+		modeIndex, modeDefault, NUM_MODES);
+	setMode(newModeSelect);
+}
+
+
+void LifeEngine::onGenerate() {
+	// 2D cellular automata
+	// Based on parallel bitwise implementation by Tomas Rokicki, Paperclip Optimizer,
+	// and Michael Abrash's (Graphics Programmer's Black Book, Chapter 17) padding method
+	// 
+	// Not optimal but efficent enough and readable.
+
+	uint64_t readMatrix = matrixBuffer[readHead];
+	uint64_t writeMatrix = 0;
+
+	// Eight matrix rows + top & bottom padding
+	row.fill(0);
+
+	// Fill rows from current matrix
+	for (int i = 1; i < 9; i++)
+		row[i] = (readMatrix >> ((i - 1) * 8)) & 0xFFULL;
+
+	// Fill top & bottom padding rows
+	if (modeIndex == 0) {
+		// Clip
+		row[0] = 0;
+		row[9] = 0;
+	}
+	else if (modeIndex == 1) {
+		// Wrap
+		row[0] = row[8];
+		row[9] = row[1];
+	}
+	else if (modeIndex == 2) {
+		// Klein bottle
+		row[0] = reverseRow(row[8]);
+		row[9] = reverseRow(row[1]);
+	}
+	else if (modeIndex == 3) {
+		// Random
+		row[0] = rack::random::get<uint8_t>();
+		row[9] = rack::random::get<uint8_t>();
+	}
+
+	for (int i = 1; i < 9; i++) {
+		// Current row  - C,
+		// 8 neighbours - NW, N, NE, W, E, SW, S, SE
+		uint8_t n = row[i - 1];
+		uint8_t c = row[i];
+		uint8_t s = row[i + 1];
+		uint8_t nw = 0, ne = 0, w = 0, e = 0, sw = 0, se = 0;
+
+		getHorizontalNeighbours(n, nw, ne);
+		getHorizontalNeighbours(c, w, e);
+		getHorizontalNeighbours(s, sw, se);
+
+		// Parallel bitwise addition
+		// What the helly
+
+		// Sum north row
+		uint8_t Nbit0 = 0, Nbit1 = 0;
+		fulladder(nw, n, ne, Nbit0, Nbit1);
+
+		// Sum current row
+		uint8_t Cbit0 = 0, Cbit1 = 0;
+		halfadder(w, e, Cbit0, Cbit1);
+
+		// Sum south row
+		uint8_t Sbit0 = 0, Sbit1 = 0;
+		fulladder(sw, s, se, Sbit0, Sbit1);
+
+		// North row sum  + current row sum = north_current row sum
+		// (Nbit1, Nbit0) + (Cbit1, Cbit0)  = NCbit2, NCbit0, NCbit1
+		uint8_t NCbit0 = 0, carry1 = 0;
+		fulladder(Nbit0, Cbit0, 0, NCbit0, carry1);
+		uint8_t NCbit1 = 0, NCbit2 = 0;
+		fulladder(Nbit1, Cbit1, carry1, NCbit1, NCbit2);
+
+		// (north & current row sum) + south row sum	 = full neighbour sum
+		// (NCbit0, NCbit1, NCbit2)  + (0, Sbit1, Sbit0) = NCSbit3, NCSbit2, NCSbit1, NCSbit0
+		uint8_t NCSbit0 = 0, carry2 = 0;
+		fulladder(NCbit0, Sbit0, 0, NCSbit0, carry2);
+		uint8_t NCSbit1 = 0, carry3 = 0;
+		fulladder(NCbit1, Sbit1, carry2, NCSbit1, carry3);
+		uint8_t NCSbit2 = 0, NCSbit3 = 0;
+		fulladder(NCbit2, 0, carry3, NCSbit2, NCSbit3);
+
+		// MSB <- -> LSB
+		alive.fill(0);
+		alive[0] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & ~NCSbit1 & ~NCSbit0);	// 0 0000
+		alive[1] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & ~NCSbit1 & NCSbit0);	// 1 0001
+		alive[2] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & NCSbit1 & ~NCSbit0);	// 2 0010
+		alive[3] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & NCSbit1 & NCSbit0);	// 3 0011
+		alive[4] = static_cast<uint8_t>(~NCSbit3 & NCSbit2 & ~NCSbit1 & ~NCSbit0);	// 4 0100
+		alive[5] = static_cast<uint8_t>(~NCSbit3 & NCSbit2 & ~NCSbit1 & NCSbit0);	// 5 0101
+		alive[6] = static_cast<uint8_t>(~NCSbit3 & NCSbit2 & NCSbit1 & ~NCSbit0);	// 6 0110
+		alive[7] = static_cast<uint8_t>(~NCSbit3 & NCSbit2 & NCSbit1 & NCSbit0);	// 7 0111
+		alive[8] = static_cast<uint8_t>(NCSbit3 & ~NCSbit2 & ~NCSbit1 & ~NCSbit0);	// 8 1000
+
+		// Apply rule
+		uint8_t birth = 0;
+		uint8_t survival = 0;
+
+		for (int k = 0; k < 9; k++) {
+			int birthIndex = k;
+			int survivalIndex = k + 9;
+
+			if (rule[ruleIndex].value & (1 << birthIndex))
+				birth |= alive[k];
+
+			if (rule[ruleIndex].value & (1 << survivalIndex))
+				survival |= alive[k];
+		}
+		uint8_t nextRow = (c & survival) | ((~c) & birth);
+
+		// Update
+		writeMatrix |= static_cast<uint64_t>(nextRow) << ((i - 1) * 8);
+	}
+	matrixBuffer[writeHead] = writeMatrix;
+}
+
+
+void LifeEngine::resetToSeed(bool sync) {
+	int head = sync ? writeHead : readHead;
+	uint64_t resetMatrix = 0;
+
+	if (seedIndex == 7) {
+		// Sparse / half density random 
+		resetMatrix = rack::random::get<uint64_t>() & rack::random::get<uint64_t>();
+	}
+	else if (seedIndex == 8) {
+		// Symmetrical / mirrored random
+		uint32_t randomHalf = rack::random::get<uint32_t>();
+		uint64_t mirroredRandomHalf = 0;
+		for (int i = 0; i < 4; i++) {
+			uint8_t row = (randomHalf >> (i * 8)) & 0xFFUL;
+			mirroredRandomHalf |= static_cast<uint64_t>(row) << ((i - 3) * -8);
+		}
+		resetMatrix = randomHalf | (mirroredRandomHalf << 32);
+	}
+	else if (seedIndex == 9) {
+		// True random
+		resetMatrix = rack::random::get<uint64_t>();
+	}
+	else {
+		resetMatrix = seed[seedIndex].value;
+	}
+	matrixBuffer[head] = resetMatrix;
+}
+
 
 void LifeEngine::inject(int inject, bool sync) {
 	size_t head = sync ? writeHead : readHead;
@@ -140,31 +314,57 @@ void LifeEngine::inject(int inject, bool sync) {
 	}
 }
 
-void LifeEngine::updateMenuParams(const EngineMenuParams& p) {
-	// Rule
-	int newRuleSelect = updateSelect(p.menuDelta[EngineMenuParams::RULE_DELTA],
-		p.menuReset[EngineMenuParams::RULE_RESET],
-		ruleSelect, ruleDefault, NUM_RULES);
-	setRuleSelect(newRuleSelect);
 
-	// Seed
-	int newSeedSelect = updateSelect(p.menuDelta[EngineMenuParams::SEED_DELTA],
-		p.menuReset[EngineMenuParams::SEED_RESET],
-		seedIndex, seedDefault, NUM_SEEDS);
-	setSeed(newSeedSelect);
+void LifeEngine::renderOutput(EngineOutput& output) {
+	// X - Returns the population (number of alive cells) scaled to 0 - 1
+	output.voltage[0] = population * xVoltageScaler;
 
-	// Mode
-	int newModeSelect = updateSelect(p.menuDelta[EngineMenuParams::MODE_DELTA],
-		p.menuReset[EngineMenuParams::MODE_RESET],
-		modeIndex, modeDefault, NUM_MODES);
-	setMode(newModeSelect);
+	// Y - Returns the 64-bit number display matrix scaled to 0 - 1
+	output.voltage[1] = displayMatrix * yVoltageScaler;
+
+	if (displayMatrixUpdated) {
+		// X Pulse - True if population (number of alive cells) has grown
+		if (population > prevPopulation)
+			output.xBit = true;
+
+		prevPopulation = population;
+
+		// Y Pulse - True if life becomes stagnant (no change occurs),
+		// also true if output repeats while looping (A B A B...)
+		bool stagnant = displayMatrix == prevOutputMatrixZ1;
+		bool repeating = (displayMatrix == prevOutputMatrixZ2) && (prevOutputMatrixZ1 == prevOutputMatrixZ3);
+
+		if (stagnant || repeating)
+			output.yBit = true;
+
+		prevOutputMatrixZ3 = prevOutputMatrixZ2;
+		prevOutputMatrixZ2 = prevOutputMatrixZ1;
+		prevOutputMatrixZ1 = displayMatrix;
+	}
+
+	// Mode LED brightness
+	output.modeLED = static_cast<float>(modeIndex) * modesScaler;
 }
 
-void LifeEngine::process(const EngineCoreParams& p,
-	float* xOut, float* yOut,
-	bool* xPulse, bool* yPulse,
-	float* modeLED) {
 
+void LifeEngine::reinitialise() {
+	for (int i = 0; i < MAX_SEQUENCE_LENGTH; i++)
+		setBufferFrame(0, i);
+
+	setBufferFrame(0, 0, true);
+	setReadHead(0);
+	setWriteHead(1);
+	setRuleSelect(ruleDefault);
+	setSeed(seedDefault);
+	setMode(modeDefault);
+	matrixBuffer[readHead] = rack::random::get<uint64_t>();
+	updateDisplay(false);
+}
+
+
+void LifeEngine::process(const EngineCoreParams& p, EngineOutput& output) {
+
+	// Sequencer
 	bool refreshDisplay = p.step;
 	bool syncStep = p.sync && p.step;
 	generate = rack::random::get<float>() < p.probability;
@@ -182,8 +382,8 @@ void LifeEngine::process(const EngineCoreParams& p,
 		refreshDisplay = true;
 	}
 
-	// Reset
-	bool seedReset = (p.miniMenuChanged && generate) && !p.sync;
+	// Reset to seed
+	bool seedReset = ((p.miniMenuChanged || p.encoderReset) && generate) && !p.sync;
 
 	if (p.miniMenuChanged && p.sync)
 		seedResetPending = true;
@@ -193,35 +393,11 @@ void LifeEngine::process(const EngineCoreParams& p,
 
 	if (((p.reset || seedReset) && !p.sync) || ((resetPending || seedResetPending) && syncStep)) {
 		if (generate) {
-			int head = p.sync ? writeHead : readHead;
-			uint64_t resetMatrix = 0;
-
-			if (seedIndex == 7) {
-				// Sparse / half density random 
-				resetMatrix = rack::random::get<uint64_t>() & rack::random::get<uint64_t>();
-			}
-			else if (seedIndex == 8) {
-				// Symmetrical / mirrored random
-				uint32_t randomHalf = rack::random::get<uint32_t>();
-				uint64_t mirroredRandomHalf = 0;
-				for (int i = 0; i < 4; i++) {
-					uint8_t row = (randomHalf >> (i * 8)) & 0xFFUL;
-					mirroredRandomHalf |= static_cast<uint64_t>(row) << ((i - 3) * -8);
-				}
-				resetMatrix = randomHalf | (mirroredRandomHalf << 32);
-			}
-			else if (seedIndex == 9) {
-				// True random
-				resetMatrix = rack::random::get<uint64_t>();
-			}
-			else {
-				resetMatrix = seed[seedIndex].value;
-			}
-
-			matrixBuffer[head] = resetMatrix;
+			resetToSeed(p.sync);
 			generate = false;
 		}
 		else if (!seedResetPending) {
+			// Sequence reset
 			if (p.sync) {
 				writeHead = 0;
 			}
@@ -236,123 +412,9 @@ void LifeEngine::process(const EngineCoreParams& p,
 	}
 
 	// Generate
-	if (generate && p.step) {
-		// 2D cellular automata
-		// Based on parallel bitwise implementation by Tomas Rokicki, Paperclip Optimizer,
-		// and Michael Abrash's (Graphics Programmer's Black Book, Chapter 17) padding method
-		// 
-		// Not optimal but efficent enough and readable
-
-		uint64_t readMatrix = matrixBuffer[readHead];
-		uint64_t writeMatrix = 0;
-
-		// Eight matrix rows + top & bottom padding
-		std::array<uint8_t, 10> row{};
-
-		// Fill rows from current matrix
-		for (int i = 1; i < 9; i++)
-			row[i] = (readMatrix >> ((i - 1) * 8)) & 0xFFULL;
-
-		// Fill top & bottom padding rows
-		if (modeIndex == 0) {
-			// Clip
-			row[0] = 0;
-			row[9] = 0;
-		}
-		else if (modeIndex == 1) {
-			// Wrap
-			row[0] = row[8];
-			row[9] = row[1];
-		}
-		else if (modeIndex == 2) {
-			// Klein bottle
-			row[0] = reverseRow(row[8]);
-			row[9] = reverseRow(row[1]);
-		}
-		else if (modeIndex == 3) {
-			// Random
-			row[0] = rack::random::get<uint8_t>();
-			row[9] = rack::random::get<uint8_t>();
-		}
-
-		for (int i = 1; i < 9; i++) {
-			// Current row  - C,
-			// 8 neighbours - NW, N, NE, W, E, SW, S, SE
-			uint8_t n = row[i - 1];
-			uint8_t c = row[i];
-			uint8_t s = row[i + 1];
-			uint8_t nw = 0, ne = 0, w = 0, e = 0, sw = 0, se = 0;
-
-			getHorizontalNeighbours(n, nw, ne);
-			getHorizontalNeighbours(c, w, e);
-			getHorizontalNeighbours(s, sw, se);
-
-			// Parallel bitwise addition
-			// What the helly
-
-			// Sum north row
-			uint8_t Nbit0 = 0, Nbit1 = 0;
-			fulladder(nw, n, ne, Nbit0, Nbit1);
-
-			// Sum current row
-			uint8_t Cbit0 = 0, Cbit1 = 0;
-			halfadder(w, e, Cbit0, Cbit1);
-
-			// Sum south row
-			uint8_t Sbit0 = 0, Sbit1 = 0;
-			fulladder(sw, s, se, Sbit0, Sbit1);
-
-			// North row sum  + current row sum = north_current row sum
-			// (Nbit1, Nbit0) + (Cbit1, Cbit0)  = NCbit2, NCbit0, NCbit1
-			uint8_t NCbit0 = 0, carry1 = 0;
-			fulladder(Nbit0, Cbit0, 0, NCbit0, carry1);
-			uint8_t NCbit1 = 0, NCbit2 = 0;
-			fulladder(Nbit1, Cbit1, carry1, NCbit1, NCbit2);
-
-			// (north_current row sum)   + south row sum	 = full neighbour sum
-			// (NCbit0, NCbit1, NCbit2)  + (0, Sbit1, Sbit0) = NCSbit3, NCSbit2, NCSbit1, NCSbit0
-			uint8_t NCSbit0 = 0, carry2 = 0;
-			fulladder(NCbit0, Sbit0, 0, NCSbit0, carry2);
-			uint8_t NCSbit1 = 0, carry3 = 0;
-			fulladder(NCbit1, Sbit1, carry2, NCSbit1, carry3);
-			uint8_t NCSbit2 = 0, NCSbit3 = 0;
-			fulladder(NCbit2, 0, carry3, NCSbit2, NCSbit3);
-
-			// MSB <- -> LSB
-			std::array<uint8_t, 9> alive{};
-			alive[0] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & ~NCSbit1 & ~NCSbit0);	// 0 0000
-			alive[1] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & ~NCSbit1 & NCSbit0);	// 1 0001
-			alive[2] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & NCSbit1 & ~NCSbit0);	// 2 0010
-			alive[3] = static_cast<uint8_t>(~NCSbit3 & ~NCSbit2 & NCSbit1 & NCSbit0);	// 3 0011
-			alive[4] = static_cast<uint8_t>(~NCSbit3 & NCSbit2 & ~NCSbit1 & ~NCSbit0);	// 4 0100
-			alive[5] = static_cast<uint8_t>(~NCSbit3 & NCSbit2 & ~NCSbit1 & NCSbit0);	// 5 0101
-			alive[6] = static_cast<uint8_t>(~NCSbit3 & NCSbit2 & NCSbit1 & ~NCSbit0);	// 6 0110
-			alive[7] = static_cast<uint8_t>(~NCSbit3 & NCSbit2 & NCSbit1 & NCSbit0);	// 7 0111
-			alive[8] = static_cast<uint8_t>(NCSbit3 & ~NCSbit2 & ~NCSbit1 & ~NCSbit0);	// 8 1000
-
-			// Apply rule
-			uint8_t birth = 0;
-			uint8_t survival = 0;
-
-			for (int k = 0; k < 9; k++) {
-				int birthIndex = k;
-				int survivalIndex = k + 9;
-
-				if (rule[ruleIndex].value & (1 << birthIndex))
-					birth |= alive[k];
-
-				if (rule[ruleIndex].value & (1 << survivalIndex))
-					survival |= alive[k];
-			}
-			uint8_t nextRow = (c & survival) | ((~c) & birth);
-
-			// Update
-			writeMatrix |= static_cast<uint64_t>(nextRow) << ((i - 1) * 8);
-		}
-
-		matrixBuffer[writeHead] = writeMatrix;
-		refreshDisplay = true;
-	}
+	if (generate && p.step)
+		onGenerate();
+	
 
 	// Sync inject
 	if (injectPending && syncStep) {
@@ -371,42 +433,9 @@ void LifeEngine::process(const EngineCoreParams& p,
 	if (refreshDisplay)
 		updateDisplay(p.step, p.length);
 
-	// Output
-	// X - Returns the population (number of alive cells) scaled to 0 - 1
-	*xOut = population * xVoltageScaler;
-	
-	// Y - Returns the 64-bit number display matrix scaled to 0 - 1
-	*yOut = displayMatrix * yVoltageScaler;
-
-	// X Pulse - True if population (number of alive cells) has grown
-	if (displayMatrixUpdated && (population > prevPopulation))
-		*xPulse = true;
-	prevPopulation = population;
-
-	// Y Pulse - True if life becomes stagnant (no change occurs),
-	// also true if output repeats while looping
-	if (displayMatrixUpdated && (displayMatrix == prevOutputMatrix))
-		*yPulse = true;
-	prevOutputMatrix = displayMatrix;
-
-	// Mode LED brightness
-	*modeLED = static_cast<float>(modeIndex) * modesScaler;
-
+	// Render output
+	renderOutput(output);
 	displayMatrixUpdated = false;
-}
-
-void LifeEngine::reset() {
-	for (int i = 0; i < MAX_SEQUENCE_LENGTH; i++)
-		setBufferFrame(0, i);
-
-	setBufferFrame(0, 0, true);
-	setReadHead(0);
-	setWriteHead(1);
-	setRuleSelect(ruleDefault);
-	setSeed(seedDefault);
-	setMode(modeDefault);
-	matrixBuffer[readHead] = rack::random::get<uint64_t>();
-	updateDisplay(false);
 }
 
 // Save setters
@@ -419,32 +448,36 @@ void LifeEngine::setBufferFrame(uint64_t newFrame, int index,
 		matrixBuffer[index] = newFrame;
 }
 
+
 void LifeEngine::onRuleChange() {
 	ruleIndex = rack::clamp(ruleSelect + ruleCv, 0, NUM_RULES - 1);
 }
+
 
 void LifeEngine::setRuleSelect(int newRule) {
 	ruleSelect = rack::clamp(newRule, 0, NUM_RULES - 1);
 	onRuleChange();
 }
 
+
 void LifeEngine::setRuleCv(float newRuleCv) {
 	ruleCv = static_cast<int>(std::round(newRuleCv * NUM_RULES));
 	onRuleChange();
 }
 
+
 void LifeEngine::setSeed(int newSeed) {
 	seedIndex = rack::clamp(newSeed, 0, NUM_SEEDS - 1);
 }
+
 
 void LifeEngine::setMode(int newMode) {
 	modeIndex = rack::clamp(newMode, 0, NUM_MODES - 1);
 }
 
+
 // Save getters
-uint64_t LifeEngine::getBufferFrame(int index, 
-	bool getDisplayMatrix ,
-	bool getDisplayMatrixSave) {
+uint64_t LifeEngine::getBufferFrame(int index, bool getDisplayMatrix ,bool getDisplayMatrixSave) {
 
 	if (getDisplayMatrix)
 		return displayMatrix;
@@ -456,34 +489,42 @@ uint64_t LifeEngine::getBufferFrame(int index,
 		return 0;
 }
 
+
 int LifeEngine::getRuleSelect() { 
 	return ruleSelect; 
 }
+
 
 int LifeEngine::getSeed() { 
 	return seedIndex; 
 }
 
+
 int LifeEngine::getMode() { 
 	return modeIndex; 
 }
 
+
 // UI getters
 void LifeEngine::getRuleActiveLabel(char out[5]) {
-	memcpy(out, rule[ruleIndex].label, 5);
+	snprintf(out, 5, "%4s", rule[ruleIndex].label);
 }
+
 
 void LifeEngine::getRuleSelectLabel(char out[5]) {
-	memcpy(out, rule[ruleSelect].label, 5);
+	snprintf(out, 5, "%4s", rule[ruleSelect].label);
 }
+
 
 void LifeEngine::getSeedLabel(char out[5]) {
-	memcpy(out, seed[seedIndex].label, 5);
+	snprintf(out, 5, "%4s", seed[seedIndex].label);
 }
 
+
 void LifeEngine::getModeLabel(char out[5]) {
-	memcpy(out, modeLabel[modeIndex], 5);
+	snprintf(out, 5, "%4s", modeLabel[modeIndex]);
 }
+
 
 // Helpers
 uint8_t LifeEngine::reverseRow(uint8_t row) {
@@ -492,6 +533,7 @@ uint8_t LifeEngine::reverseRow(uint8_t row) {
 	row = ((row & 0xAA) >> 1) | ((row & 0x55) << 1);
 	return row;
 }
+
 
 void LifeEngine::getHorizontalNeighbours(uint8_t row, uint8_t& west, uint8_t& east) {
 	if (modeIndex == 0) {
