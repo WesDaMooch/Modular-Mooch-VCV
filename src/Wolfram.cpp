@@ -18,10 +18,8 @@
 //
 // TODO: find out if the EngineToUiLayer is the best way to do share data.
 //
-// V1.2:
+// TODO:
 // - onRandomize.
-//
-// V2:
 // - Polyphonic engines, multiple outputs
 // or an expander which opens up all Algos at once. 
 //
@@ -680,7 +678,7 @@ struct Wolfram : Module {
 };
 
 struct Display : TransparentWidget {
-	// TODO: See ZZC Clock for glowing display.
+	// TODO: See ZZC Clock for glowing display
 	
 	Wolfram* module = nullptr;
 
@@ -824,11 +822,7 @@ struct Display : TransparentWidget {
 		nvgText(vg, textPos[row].x, textPos[row].y, text, nullptr);
 	}
 
-	void drawMenuText(NVGcontext* vg, 
-		const char* line1,
-		const char* line2, 
-		const char* line3, 
-		const char* line4) {
+	void drawMenuText(NVGcontext* vg, const char* line1, const char* line2, const char* line3, const char* line4) {
 		// Helper for drawing four lines of menu text
 		drawText(vg, line1, 0);
 		drawText(vg, line2, 1);
@@ -1258,7 +1252,8 @@ struct WolframModuleWidget : ModuleWidget {
 
 		if (!module)
 			return;
-	
+		
+		// Show/hide FX knobs
 		if (module->activeFx != lastActiveFx) {
 			switch (module->activeFx) {
 			case FX::Gain:
