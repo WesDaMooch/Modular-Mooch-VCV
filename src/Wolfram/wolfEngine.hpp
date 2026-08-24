@@ -6,8 +6,10 @@
 // Copyright (c) 2026 Wesley Lawrence Leggo-Morrell
 // License: GPL-3.0-or-later
 
+
 #pragma once
 #include "algoEngine.hpp"
+
 
 class WolfEngine : public AlgoEngine {
 public:
@@ -16,27 +18,18 @@ public:
 	void updateDisplay(bool advance, size_t length = 8) override;
 	void updateMenuParams(const EngineMenuParams& p) override;
 
-	void process(const EngineCoreParams& p,
-		float* xOut, float* yOut, 
-		bool* xPulse, bool* yPulse, 
-		float* modeLED) override;
-
-	void reset() override;
-	
+	void reinitialise() override;
+	void process(const EngineCoreParams& p, EngineOutput& output) override;
+		
 	// Save setters
-	void setBufferFrame(uint64_t newFrame, int index, 
-		bool setDisplayMatrix=false) override;
-
+	void setBufferFrame(uint64_t newFrame, int index, bool setDisplayMatrix=false) override;
 	void setRuleSelect(int newRule) override;
 	void setRuleCv(float newRuleCv) override;
 	void setSeed(int newSeed) override;
 	void setMode(int newMode) override;
 
 	// Save getters 
-	uint64_t getBufferFrame(int index, 
-		bool getDisplayMatrix = false, 
-		bool getDisplayMatrixSave = false) override;
-
+	uint64_t getBufferFrame(int index, bool getDisplayMatrix = false, bool getDisplayMatrixSave = false) override;
 	int getRuleSelect() override;
 	int getSeed() override;
 	int getMode() override;
@@ -74,6 +67,9 @@ protected:
 	static constexpr  float voltageScaler = 1.f / UINT8_MAX;
 	static constexpr  float modeScaler = 1.f / (static_cast<float>(NUM_MODES) - 1.f);
 
-	void inject(int inject, bool sync) override;
-	void onRuleChange() override;
+	void onGenerate();
+	void resetToSeed(bool sync);
+	void inject(int inject, bool sync);
+	void onRuleChange();
+	void renderOutput(EngineOutput& output);
 };
