@@ -3,9 +3,9 @@
 #include "plugin.hpp"
 #include <array>
 #include <vector>
-#include "Modal\resonator.hpp"
+#include "Modal\common.hpp"
 #include "Modal\chamberlinSVF.hpp"
-#include "Modal\drum.hpp"
+#include "Modal\structures.hpp"
 
 // Ideas
 // Multiple layers of modes
@@ -17,20 +17,6 @@
 // Shape
 // Harmo
 
-/*
-		1.0,
-		1.59,
-		2.14,
-		2.30,
-		2.65,
-		2.92,
-		3.16,
-		3.5,
-		3.6,
-		3.65,
-		4.06,
-		4.15
-*/
 
 struct Modal : Module
 {
@@ -61,46 +47,50 @@ struct Modal : Module
 
 	// DSP
 	int srate = 48000;
-	//std::vector<IIRResonator> resonator;
-	std::vector<ChamberlinSVF> resonator;
-	//std::vector<dsp::BiquadFilter> resonator;
+	SvfCoefficients coefs;
+	std::vector<ChamberlinSVF> resonators;
 	
+	StructureParams sParams;
+
+	String string;
 	Drum drum;
 
 	Modal() 
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
-		// Parameter
+		// Parameters
 		configParam(FREQ_PARAM, 20.f, 1000.f, 220.f, "Freq", "Hz");
 		configParam(SIZE_PARAM, 0.f, 1.f, 0.5f, "Size");
 		configParam(POSITION_PARAM, 0.f, 1.f, 0.5f, "Position");
 		configParam(DAMPING_PARAM, 0.f, 1.f, 0.5f, "Damping");
 		configParam(BRIGHTNESS_PARAM, 0.f, 1.f, 0.5f, "Brightness");
-		// Input
+		// Inputs
 		configInput(AUDIO_INPUT, "Input");
-		// Output
+		// Outputs
 		configOutput(AUDIO_OUTPUT, "Output");
-
-		onSampleRateChange();
 
 		for (int i = 0; i < MAX_MODES; i++)
 		{
-			resonator.emplace_back();
+			resonators.emplace_back();
 		}
-	}
 
+		onSampleRateChange();
+	}
 
 	void onSampleRateChange() override 
 	{
 		srate = APP->engine->getSampleRate();
 		drum.setSamplerate(srate);
+
+		for (auto& resonator : resonators)
+			resonator.setSamplerate(srate);
 	}
 
 	void onReset(const ResetEvent& e) override 
 	{
-		for (int i = 0; i < MAX_MODES; i++)
+		for (size_t i = 0; i < MAX_MODES; i++)
 		{
-			resonator[i].reset();
+			resonators[i].reset();
 		}
 	}
 	
@@ -121,37 +111,35 @@ struct Modal : Module
 		//float decayParam = params[DECAY_PARAM].getValue();
 		//float decay = decayParam * maxDecayTime;
 
-		float output = 0.f;
+		float output = 0.0f;
 		float input = inputs[AUDIO_INPUT].getVoltage();
 		// Convert to digital audio range (-1 tp +1)
 		input *= 0.1f;
-		input = rack::clamp(input, -1.f, 1.f);
+		input = clamp11(input, -1.0f, 1.0f);
 
-		drum.setPitch(params[FREQ_PARAM].getValue()); // Pitch should be size?
-		drum.setSize(params[SIZE_PARAM].getValue() * 6.f);
-		drum.setPosition(params[POSITION_PARAM].getValue());
-		drum.setDamping(params[DAMPING_PARAM].getValue());
-		drum.setOvertones(params[BRIGHTNESS_PARAM].getValue());
+		//drum.setPitch(params[FREQ_PARAM].getValue()); // Pitch should be size?
+		//drum.setSize(params[SIZE_PARAM].getValue() * 6.f);
+		//drum.setPosition(params[POSITION_PARAM].getValue());
+		//drum.setDamping(params[DAMPING_PARAM].getValue());
+		//drum.setOvertones(params[BRIGHTNESS_PARAM].getValue());
 		//drum.update(); // slow
+
+		sParams.pitch = params[FREQ_PARAM].getValue();
+		sParams.decay = 10.0f;
+		string.setParams(sParams);
 
 		for (int i = 0; i < MAX_MODES; i++)
 		{
-			//float amplitude = 1.f;
-			float weight = drum.getWeight(i);
-			float freq = drum.getFreq(i);
-			float decay = 100.f;
+			coefs = {};
+			coefs = string.getCoefficients(i);
 
-			//float freq = params[FREQ_PARAM].getValue() * (i + 1);
-			//float weight = 20.f;
+			resonators[i].setCoefficients(coefs);
+			resonators[i].process(input);
 
-			resonator[i].setCoefficients(freq, weight * decay, srate);
-			//resonator[i].setCoefficients(freq, decay, srate);
-			resonator[i].process(input);
-			//output += weight * resonator[i].bandpass();
-			output += resonator[i].bandpass();
+			output += resonators[i].bandpass();
 		}
 
-		output = output / (float)MAX_MODES;
+		output = output * string.getActiveModesScaler();
 
 		// Convert to voltage range (-10 to +10)
 		output *= 10.f;
@@ -162,13 +150,14 @@ struct Modal : Module
 		
 };
 
+
 struct ModalModuleWidget : ModuleWidget 
 {
-
 	ModalModuleWidget(Modal* module) 
 	{
 		setModule(module);
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/panels/modal.svg")));
+		//setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Wolfram.svg")));
 
 		// Srews
 		addChild(createWidget<ThemedScrew>(Vec(RACK_GRID_WIDTH, 0)));
@@ -190,10 +179,10 @@ struct ModalModuleWidget : ModuleWidget
 	void appendContextMenu(Menu* menu) override
 	{
 		//Modal* module = dynamic_cast<Modal*>(this->module);
-
-		menu->addChild(new MenuSeparator);
+		//menu->addChild(new MenuSeparator);
 	}
 
 };
+
 
 Model* modelModal = createModel<Modal, ModalModuleWidget>("Modal");

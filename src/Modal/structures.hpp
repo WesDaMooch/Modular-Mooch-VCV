@@ -1,9 +1,45 @@
 #pragma once
+#include "common.hpp"
 #include <array>
 #include <cmath>
-#include <algorithm>
 
-static constexpr int MAX_MODES = 16;
+
+struct StructureParams {
+	float pitch = 220.0f;
+	float decay = 1.0f;
+	// damping?
+
+	bool operator==(const StructureParams& other) const {
+		return pitch == other.pitch && decay == other.decay;
+	}
+
+	bool operator!=(const StructureParams& other) const {
+		return !(*this == other);
+	}
+};
+
+
+// String 
+class String
+{
+public:
+	String();
+	void setSamplerate(int newSamplerate);
+	void setParams(StructureParams& newParams);
+	void update();
+	SvfCoefficients getCoefficients(size_t idx);
+	int getActiveModesScaler(); //TODO: return 1/activeModes
+
+protected:
+	int sr = 48000;
+	int activeModes = 0;
+	float minFreq = 20.0f;
+	float maxFreq = sr * 0.5f;
+	std::array<SvfCoefficients, MAX_MODES> coefs;
+	StructureParams params;
+	StructureParams prevParams;
+};
+
 
 // Circular Membrane 
 struct Drum
@@ -25,7 +61,7 @@ struct Drum
 	std::array<float, MAX_MODES> weights = {};
 	std::array<float, MAX_MODES> freqs = {};
 
-	int samplerate = 44100;
+	int samplerate = 48000;
 	float tuning = 220.f;
 	float size = 1.f;
 	float position = 0.3f;

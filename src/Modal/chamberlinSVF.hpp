@@ -1,13 +1,16 @@
 #pragma once
+#include "common.hpp"
 #include <cmath>
-#include <algorithm>
+
 
 // Chamberlin's State Variable Digital Filter
 // from Musical Applications of Microprocessors
 
-// Updated version from
+// Updated version
 // Improving the Chamberlin Digital State Variable Filter 
 // Victor Lazzarini and Joseph Timoney
+
+
 class ChamberlinSVF
 {
 protected:
@@ -20,13 +23,16 @@ protected:
 	float hp = 0.f;
 	float bp = 0.f;
 	float lp = 0.f;
-	//float n = 0.f;
-	//float p = 0.f;
+
+	float amplitude = 1.0f;
+
+	int sr = 48000;
 
 public:
-	void reset();
-	void setCoefficients(float f, float q, int fs);
+	void setSamplerate(int newSamplerate);
+	void setCoefficients(SvfCoefficients& c);
 	void process(float x);
+	void reset();
 	float highpass();
 	float lowpass();
 	float bandpass();
