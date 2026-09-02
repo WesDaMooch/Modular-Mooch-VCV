@@ -12,18 +12,17 @@
 
 // Params
 // 
-// Resonator
 // Pitch
-// Shape
-// Harmo
-
+// 
+// Material
+// Position
 
 struct Modal : Module
 {
 	enum ParamId
 	{
-		FREQ_PARAM,
-		SIZE_PARAM,
+		PITCH_PARAM,
+		MATERIAL_PARAM,
 		POSITION_PARAM,
 		DAMPING_PARAM,
 		BRIGHTNESS_PARAM,
@@ -37,6 +36,7 @@ struct Modal : Module
 	enum OutputId
 	{
 		AUDIO_OUTPUT,
+		FREQ_OUTPUT,
 		OUTPUTS_LEN
 	};
 	enum LightId
@@ -48,6 +48,7 @@ struct Modal : Module
 	// DSP
 	int srate = 48000;
 	SvfCoefficients coefs;
+	std::array<SvfCoefficients, MAX_MODES> coefsTemp;
 	std::vector<ChamberlinSVF> resonators;
 	
 	StructureParams sParams;
@@ -59,15 +60,18 @@ struct Modal : Module
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
-		configParam(FREQ_PARAM, 20.f, 1000.f, 220.f, "Freq", "Hz");
-		configParam(SIZE_PARAM, 0.f, 1.f, 0.5f, "Size");
-		configParam(POSITION_PARAM, 0.f, 1.f, 0.5f, "Position");
-		configParam(DAMPING_PARAM, 0.f, 1.f, 0.5f, "Damping");
-		configParam(BRIGHTNESS_PARAM, 0.f, 1.f, 0.5f, "Brightness");
+		configParam(PITCH_PARAM, 20.0f, 1000.0f, 220.0f, "Freq", "Hz");
+		configParam(MATERIAL_PARAM, 0.0f, 1.0f, 0.5f, "Material");
+		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
+		configParam(DAMPING_PARAM, 0.0f, 1.0f, 0.5f, "Damping");
+		configParam(BRIGHTNESS_PARAM, 0.0f, 1.0f, 0.5f, "Brightness");
 		// Inputs
 		configInput(AUDIO_INPUT, "Input");
 		// Outputs
 		configOutput(AUDIO_OUTPUT, "Output");
+
+		configOutput(FREQ_OUTPUT, "Freq");
+		outputs[FREQ_OUTPUT].setChannels(MAX_MODES);
 
 		for (int i = 0; i < MAX_MODES; i++)
 		{
@@ -107,47 +111,35 @@ struct Modal : Module
 	
 	void process(const ProcessArgs& args) override
 	{
-		//float maxDecayTime = 10.f;
 		//float decayParam = params[DECAY_PARAM].getValue();
-		//float decay = decayParam * maxDecayTime;
 
 		float output = 0.0f;
 		float input = inputs[AUDIO_INPUT].getVoltage();
-		// Convert to digital audio range (-1 tp +1)
-		input *= 0.1f;
+		input *= 0.1f;	// Convert to digital audio range (-1 tp +1)
 		input = clamp11(input, -1.0f, 1.0f);
 
-		//drum.setPitch(params[FREQ_PARAM].getValue()); // Pitch should be size?
-		//drum.setSize(params[SIZE_PARAM].getValue() * 6.f);
-		//drum.setPosition(params[POSITION_PARAM].getValue());
-		//drum.setDamping(params[DAMPING_PARAM].getValue());
-		//drum.setOvertones(params[BRIGHTNESS_PARAM].getValue());
-		//drum.update(); // slow
-
-		sParams.pitch = params[FREQ_PARAM].getValue();
-		sParams.decay = 10.0f;
+		sParams.pitch = params[PITCH_PARAM].getValue();
+		sParams.material = params[MATERIAL_PARAM].getValue();
 		string.setParams(sParams);
 
 		for (int i = 0; i < MAX_MODES; i++)
 		{
 			coefs = {};
 			coefs = string.getCoefficients(i);
+			coefsTemp[i] = coefs;
 
 			resonators[i].setCoefficients(coefs);
 			resonators[i].process(input);
 
 			output += resonators[i].bandpass();
+
+			outputs[FREQ_OUTPUT].setVoltage(coefsTemp[i].freq, i);
 		}
 
 		output = output * string.getActiveModesScaler();
-
-		// Convert to voltage range (-10 to +10)
-		output *= 10.f;
-
+		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
-		//outputs[AUDIO_OUTPUT].setVoltage(drum.getFreq(0));
-	}
-		
+	}		
 };
 
 
@@ -165,8 +157,8 @@ struct ModalModuleWidget : ModuleWidget
 		addChild(createWidget<ThemedScrew>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		addChild(createWidget<ThemedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		// Parameters
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 20.f)), module, Modal::FREQ_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 40.f)), module, Modal::SIZE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 20.f)), module, Modal::PITCH_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 40.f)), module, Modal::MATERIAL_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 60.f)), module, Modal::POSITION_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 80.f)), module, Modal::DAMPING_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 100.f)), module, Modal::BRIGHTNESS_PARAM));
@@ -174,6 +166,7 @@ struct ModalModuleWidget : ModuleWidget
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.f, 22.14f)), module, Modal::AUDIO_INPUT));
 		// Ouputs
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.f, 99.852f)), module, Modal::AUDIO_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(30.f, 99.852f)), module, Modal::FREQ_OUTPUT));
 	}
 	
 	void appendContextMenu(Menu* menu) override

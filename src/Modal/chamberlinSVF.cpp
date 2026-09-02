@@ -19,11 +19,6 @@ void ChamberlinSVF::setCoefficients(SvfCoefficients& c)
 
 void ChamberlinSVF::process(float x)
 {
-	if (amplitude == 0.0f)
-		return;
-
-	//TODO: this is slow...
-
 	float kdiv = 1.f + (K / Q) + (K * K);
 
 	hp = (x - ((1.f / Q + K) * s1) - s2) / kdiv;

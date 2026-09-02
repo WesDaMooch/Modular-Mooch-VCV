@@ -12,19 +12,45 @@ void String::setSamplerate(int newSamplerate) {
 
 void String::setParams(StructureParams& newParams) {
 	params.pitch = clamp11(newParams.pitch, minFreq, maxFreq);
-	params.decay = clamp11(newParams.decay, 0.0f, 1000.0f);
+	params.material = clamp11(newParams.material, 0.0f, 1.0f);
+	
+	update();
 
-	if (params != prevParams)
-		update();
+	//if (params != prevParams)
+	//	update();
 }
 
 void String::update() {
+	float stiffness = params.material * MAX_STIFFNESS;
 	activeModes = 0;
-	float f = 0.0f;
 
 	for (size_t idx = 0; idx < MAX_MODES; idx++) {
 		int n = idx + 1;
-		f = params.pitch * n;
+
+		// Euphonics - 5.4.3
+		//float f = params.pitch * n * (1.0f + stiffness * n * n); 
+
+		// Harvey Fletcher's work on stiff piano strings
+		float f = params.pitch * n * std::sqrt(1.0f + stiffness * n * n);
+
+		// Ideal string
+		//float f = params.pitch * n;
+
+		if (f < minFreq || f > maxFreq) {
+			coefs[idx].amplitude = 0.0f;
+			break;
+		}
+
+		coefs[idx].freq = f;
+		coefs[idx].amplitude = 1.0f;
+		coefs[idx].q = 100.0f;
+		activeModes++;
+		
+		
+
+		/*
+		int n = idx + 1;
+		float f = params.pitch * n;
 
 		if (f < minFreq || f > maxFreq) {
 			coefs[idx].amplitude = 0.0f;
@@ -35,16 +61,18 @@ void String::update() {
 		coefs[idx].q = 10.0f;
 
 		activeModes++;
+		*/
+		
 	}
 }
 
-SvfCoefficients String::getCoefficients(size_t idx) {
+SvfCoefficients String::getCoefficients(int idx) {
 	idx = clamp11(idx, 0, MAX_MODES);
 	return coefs[idx];
 }
 
-int String::getActiveModesScaler() {
-	return 1.0f / activeModes;
+float String::getActiveModesScaler() const {
+	return activeModes > 0 ? 1.0f / activeModes : 0.0f;
 }
 
 

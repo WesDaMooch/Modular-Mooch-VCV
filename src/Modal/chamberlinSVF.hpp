@@ -10,6 +10,7 @@
 // Improving the Chamberlin Digital State Variable Filter 
 // Victor Lazzarini and Joseph Timoney
 
+// TODO: try out this biquad: https://ccrma.stanford.edu/~jos/pasp/Modal_Expansion.html
 
 class ChamberlinSVF
 {

@@ -6,8 +6,10 @@
 
 struct StructureParams {
 	float pitch = 220.0f;
+	float material = 0.5f;
+	float postition = 0.5f;
+
 	float decay = 1.0f;
-	// damping?
 
 	bool operator==(const StructureParams& other) const {
 		return pitch == other.pitch && decay == other.decay;
@@ -27,14 +29,18 @@ public:
 	void setSamplerate(int newSamplerate);
 	void setParams(StructureParams& newParams);
 	void update();
-	SvfCoefficients getCoefficients(size_t idx);
-	int getActiveModesScaler(); //TODO: return 1/activeModes
+	SvfCoefficients getCoefficients(int idx);
+	float getActiveModesScaler() const; 
 
 protected:
+	constexpr static float MAX_STIFFNESS = 0.01f;
+
 	int sr = 48000;
 	int activeModes = 0;
+
 	float minFreq = 20.0f;
 	float maxFreq = sr * 0.5f;
+
 	std::array<SvfCoefficients, MAX_MODES> coefs;
 	StructureParams params;
 	StructureParams prevParams;
