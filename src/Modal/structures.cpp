@@ -11,9 +11,11 @@ void String::setSamplerate(int newSamplerate) {
 }
 
 void String::setParams(StructureParams& newParams) {
-	params.pitch = clamp11(newParams.pitch, minFreq, maxFreq);
-	params.material = clamp11(newParams.material, 0.0f, 1.0f);
-	
+	params.pitch = mClamp(newParams.pitch, minFreq, maxFreq);
+	params.morph = mClamp(newParams.morph, 0.0f, 1.0f);
+	params.position = mClamp(newParams.position, -0.999f, 0.999f);
+
+	inharmonicity = mMap(params.morph, -1.0f, 1.0f);
 	update();
 
 	//if (params != prevParams)
@@ -21,29 +23,36 @@ void String::setParams(StructureParams& newParams) {
 }
 
 void String::update() {
-	float stiffness = params.material * MAX_STIFFNESS;
 	activeModes = 0;
 
 	for (size_t idx = 0; idx < MAX_MODES; idx++) {
 		int n = idx + 1;
 
 		// Euphonics - 5.4.3
-		//float f = params.pitch * n * (1.0f + stiffness * n * n); 
+		//float f = params.pitch * n * (1.0f + inharmonicity * n * n);
 
-		// Harvey Fletcher's work on stiff piano strings
-		float f = params.pitch * n * std::sqrt(1.0f + stiffness * n * n);
+
+		// Harvey Fletchers stiff piano strings
+		//float f = params.pitch * n * std::sqrt(1.0f + inharmonicity * n * n);
 
 		// Ideal string
 		//float f = params.pitch * n;
 
+		//float f = params.pitch * (n * (1.0f + inharmonicity * (n - 1)));
+		//float f = params.pitch * (n + inharmonicity * (n - 1) * (n - 1));
+		float f = params.pitch * std::pow(float(n), 1.0f + inharmonicity);
+		coefs[idx].freq = f;
+
 		if (f < minFreq || f > maxFreq) {
 			coefs[idx].amplitude = 0.0f;
-			break;
+			continue;
 		}
 
-		coefs[idx].freq = f;
+		//Euphonics
 		coefs[idx].amplitude = 1.0f;
+		//coefs[idx].amplitude = std::sin(M_PI * n * params.position) / static_cast<float>((n * n));	// Position
 		coefs[idx].q = 100.0f;
+		//coefs[idx].q = qFundamental / (1.0f + damping * std::pow(static_cast<float>(n), exponent));	// Exponent damping
 		activeModes++;
 		
 		
@@ -67,7 +76,7 @@ void String::update() {
 }
 
 SvfCoefficients String::getCoefficients(int idx) {
-	idx = clamp11(idx, 0, MAX_MODES);
+	idx = mClamp(idx, 0, MAX_MODES);
 	return coefs[idx];
 }
 

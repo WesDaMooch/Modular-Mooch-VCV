@@ -1,9 +1,7 @@
 #pragma once
 #include <algorithm>
 
-
-static constexpr int MAX_MODES = 16;
-
+static constexpr int MAX_MODES = 6;
 
 struct SvfCoefficients {
 	float freq = 220.0f;
@@ -12,12 +10,11 @@ struct SvfCoefficients {
 };
 
 template <typename T>
-inline T clamp11(T value, T low, T high) {
+inline T mClamp(T value, T low, T high) {
 	return std::max(low, std::min(value, high));
 }
 
-/*
-inline int clamp11(int value, int low, int high) {
-	return std::max(low, std::min(value, high));
+template <typename T>
+inline T mMap(T value, T low, T high) {
+	return low + value * (high - low);
 }
-*/

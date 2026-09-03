@@ -22,7 +22,7 @@ struct Modal : Module
 	enum ParamId
 	{
 		PITCH_PARAM,
-		MATERIAL_PARAM,
+		MORPH_PARAM,
 		POSITION_PARAM,
 		DAMPING_PARAM,
 		BRIGHTNESS_PARAM,
@@ -61,7 +61,7 @@ struct Modal : Module
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
 		configParam(PITCH_PARAM, 20.0f, 1000.0f, 220.0f, "Freq", "Hz");
-		configParam(MATERIAL_PARAM, 0.0f, 1.0f, 0.5f, "Material");
+		configParam(MORPH_PARAM, 0.0f, 1.0f, 0.5f, "Morph");
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
 		configParam(DAMPING_PARAM, 0.0f, 1.0f, 0.5f, "Damping");
 		configParam(BRIGHTNESS_PARAM, 0.0f, 1.0f, 0.5f, "Brightness");
@@ -116,10 +116,11 @@ struct Modal : Module
 		float output = 0.0f;
 		float input = inputs[AUDIO_INPUT].getVoltage();
 		input *= 0.1f;	// Convert to digital audio range (-1 tp +1)
-		input = clamp11(input, -1.0f, 1.0f);
+		input = mClamp(input, -1.0f, 1.0f);
 
 		sParams.pitch = params[PITCH_PARAM].getValue();
-		sParams.material = params[MATERIAL_PARAM].getValue();
+		sParams.morph = params[MORPH_PARAM].getValue();
+		sParams.position = params[POSITION_PARAM].getValue();
 		string.setParams(sParams);
 
 		for (int i = 0; i < MAX_MODES; i++)
@@ -158,7 +159,7 @@ struct ModalModuleWidget : ModuleWidget
 		addChild(createWidget<ThemedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		// Parameters
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 20.f)), module, Modal::PITCH_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 40.f)), module, Modal::MATERIAL_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 40.f)), module, Modal::MORPH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 60.f)), module, Modal::POSITION_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 80.f)), module, Modal::DAMPING_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.f, 100.f)), module, Modal::BRIGHTNESS_PARAM));

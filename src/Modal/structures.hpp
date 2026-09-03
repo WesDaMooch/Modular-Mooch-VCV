@@ -6,8 +6,8 @@
 
 struct StructureParams {
 	float pitch = 220.0f;
-	float material = 0.5f;
-	float postition = 0.5f;
+	float morph = 0.5f;
+	float position = 0.5f;
 
 	float decay = 1.0f;
 
@@ -40,6 +40,12 @@ protected:
 
 	float minFreq = 20.0f;
 	float maxFreq = sr * 0.5f;
+
+	float inharmonicity = 0.0f;
+
+	float qFundamental = 100.f;
+	float damping = 0.1f;
+	float exponent = 2.0f;
 
 	std::array<SvfCoefficients, MAX_MODES> coefs;
 	StructureParams params;
