@@ -11,36 +11,28 @@ void String::setSamplerate(int newSamplerate) {
 }
 
 void String::setParams(StructureParams& newParams) {
-	params.pitch = mClamp(newParams.pitch, minFreq, maxFreq);
-	params.morph = mClamp(newParams.morph, 0.0f, 1.0f);
-	params.position = mClamp(newParams.position, -0.999f, 0.999f);
+	if (newParams == prevParams)
+		return;
+	
+	pitch = mClamp(newParams.pitch, minFreq, maxFreq);
+	inharmonicity = mMap(newParams.morph, -0.999f, 0.999f);
+	position = newParams.position;
+	decay = mMap(newParams.decay, 0.5f, 250.0f);
+	timbre = mMap(newParams.timbre, -3.0f, 3.0f);
 
-	inharmonicity = mMap(params.morph, -1.0f, 1.0f);
 	update();
-
-	//if (params != prevParams)
-	//	update();
+	prevParams = newParams;
 }
 
 void String::update() {
+	float qMin = 1.0f;
 	activeModes = 0;
 
 	for (size_t idx = 0; idx < MAX_MODES; idx++) {
 		int n = idx + 1;
 
-		// Euphonics - 5.4.3
-		//float f = params.pitch * n * (1.0f + inharmonicity * n * n);
-
-
-		// Harvey Fletchers stiff piano strings
-		//float f = params.pitch * n * std::sqrt(1.0f + inharmonicity * n * n);
-
-		// Ideal string
-		//float f = params.pitch * n;
-
-		//float f = params.pitch * (n * (1.0f + inharmonicity * (n - 1)));
-		//float f = params.pitch * (n + inharmonicity * (n - 1) * (n - 1));
-		float f = params.pitch * std::pow(float(n), 1.0f + inharmonicity);
+		// Pitch
+		float f = pitch * std::pow(static_cast<float>(n), 1.0f + inharmonicity);
 		coefs[idx].freq = f;
 
 		if (f < minFreq || f > maxFreq) {
@@ -48,30 +40,29 @@ void String::update() {
 			continue;
 		}
 
-		//Euphonics
-		coefs[idx].amplitude = 1.0f;
-		//coefs[idx].amplitude = std::sin(M_PI * n * params.position) / static_cast<float>((n * n));	// Position
-		coefs[idx].q = 100.0f;
-		//coefs[idx].q = qFundamental / (1.0f + damping * std::pow(static_cast<float>(n), exponent));	// Exponent damping
-		activeModes++;
-		
-		
+		// Timbre
+		// TODO: Update curve behaviour, see Max/MSP patch
+		float x = float(n - 1) / float(MAX_MODES - 1);
+		float amount = std::min(std::abs(timbre) / 3.0f, 1.0f);
 
-		/*
-		int n = idx + 1;
-		float f = params.pitch * n;
+		float curve = 0.0f;
 
-		if (f < minFreq || f > maxFreq) {
-			coefs[idx].amplitude = 0.0f;
-			continue;
-		}
+		if (timbre < 0.0f)
+			curve = 1.0f - x;
 		
-		coefs[idx].freq = f;
-		coefs[idx].q = 10.0f;
+		else
+			curve = x;
 
-		activeModes++;
-		*/
-		
+		curve = (1.0f - amount) * 1.0f + amount * curve;
+
+		// Decay (Q)
+		coefs[idx].q =  qMin + (decay - qMin) * curve; //decay * curve;
+
+		// Amplitude
+		float positionAmplitude = std::sin(M_PI * n * position);
+		coefs[idx].amplitude = positionAmplitude * curve;
+
+		activeModes++;		
 	}
 }
 

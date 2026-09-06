@@ -3,16 +3,19 @@
 #include <array>
 #include <cmath>
 
-
 struct StructureParams {
 	float pitch = 220.0f;
 	float morph = 0.5f;
 	float position = 0.5f;
-
-	float decay = 1.0f;
+	float decay = 0.5f;
+	float timbre = 0.5f;
 
 	bool operator==(const StructureParams& other) const {
-		return pitch == other.pitch && decay == other.decay;
+		return	pitch	== other.pitch && 
+			morph		== other.morph &&
+			position	== other.position &&
+			decay		== other.decay &&
+			timbre		== other.timbre;
 	}
 
 	bool operator!=(const StructureParams& other) const {
@@ -33,22 +36,20 @@ public:
 	float getActiveModesScaler() const; 
 
 protected:
-	constexpr static float MAX_STIFFNESS = 0.01f;
-
 	int sr = 48000;
 	int activeModes = 0;
 
 	float minFreq = 20.0f;
 	float maxFreq = sr * 0.5f;
 
+	float pitch = 220.0f;
 	float inharmonicity = 0.0f;
+	float position = 0.5f;
+	float decay = 1.0f;
+	float timbre = 0.0f;
 
-	float qFundamental = 100.f;
-	float damping = 0.1f;
-	float exponent = 2.0f;
 
 	std::array<SvfCoefficients, MAX_MODES> coefs;
-	StructureParams params;
 	StructureParams prevParams;
 };
 
