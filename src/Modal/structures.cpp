@@ -14,7 +14,7 @@ void String::setParams(StructureParams& newParams) {
 	if (newParams == prevParams)
 		return;
 	
-	pitch = mClamp(newParams.pitch, minFreq, maxFreq);
+	fundamentalFreq = mClamp(newParams.fundamentalFreq, minFreq, maxFreq);
 	inharmonicity = mMap(newParams.morph, -0.999f, 0.999f);
 	position = newParams.position;
 	decay = mMap(newParams.decay, 0.5f, 250.0f);
@@ -32,7 +32,7 @@ void String::update() {
 		int n = idx + 1;
 
 		// Pitch
-		float f = pitch * std::pow(static_cast<float>(n), 1.0f + inharmonicity);
+		float f = fundamentalFreq * std::pow(static_cast<float>(n), 1.0f + inharmonicity);
 		coefs[idx].freq = f;
 
 		if (f < minFreq || f > maxFreq) {

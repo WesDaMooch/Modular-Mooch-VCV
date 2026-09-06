@@ -4,18 +4,18 @@
 #include <cmath>
 
 struct StructureParams {
-	float pitch = 220.0f;
+	float fundamentalFreq = 220.0f;
 	float morph = 0.5f;
 	float position = 0.5f;
 	float decay = 0.5f;
 	float timbre = 0.5f;
 
 	bool operator==(const StructureParams& other) const {
-		return	pitch	== other.pitch && 
-			morph		== other.morph &&
-			position	== other.position &&
-			decay		== other.decay &&
-			timbre		== other.timbre;
+		return	fundamentalFreq	== other.fundamentalFreq && 
+			morph				== other.morph &&
+			position			== other.position &&
+			decay				== other.decay &&
+			timbre				== other.timbre;
 	}
 
 	bool operator!=(const StructureParams& other) const {
@@ -42,7 +42,7 @@ protected:
 	float minFreq = 20.0f;
 	float maxFreq = sr * 0.5f;
 
-	float pitch = 220.0f;
+	float fundamentalFreq = 220.0f;
 	float inharmonicity = 0.0f;
 	float position = 0.5f;
 	float decay = 1.0f;

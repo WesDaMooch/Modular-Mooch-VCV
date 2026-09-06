@@ -1,7 +1,7 @@
 #pragma once
 #include <algorithm>
 
-static constexpr int MAX_MODES = 6;
+static constexpr int MAX_MODES = 16;
 
 struct SvfCoefficients {
 	float freq = 220.0f;
