@@ -18,3 +18,17 @@ template <typename T>
 inline T mMap(T value, T low, T high) {
 	return low + value * (high - low);
 }
+
+// TODO: Interpalator
+
+/*
+Delay types:
+
+Linear mode idx (low high)
+float delayAmount = MAX_DELAY_SAMPLES / MAX_MODES;
+int delaySamples = i * delayAmount * delayParam;
+
+
+
+
+*/

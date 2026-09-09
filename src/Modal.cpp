@@ -10,12 +10,14 @@
 // Ideas
 // Multiple layers of modes
 
-// Params
-// 
-// Pitch
-// 
-// Material
-// Position
+// Decay Type Knob
+//
+// Linear mode idx (low high)
+// Exp mode idx (low high)
+// Exp freq (low high)
+// Linear freq (low high)
+// Xfade
+// ...
 
 struct Modal : Module
 {
@@ -26,7 +28,8 @@ struct Modal : Module
 		POSITION_PARAM,
 		DECAY_PARAM,
 		TIMBRE_PARAM,
-		DELAY_PARAM,
+		DELAY_TIME_PARAM,
+		DELAY_TYPE_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId
@@ -53,23 +56,22 @@ struct Modal : Module
 	// DSP
 	static constexpr int MAX_DELAY_SAMPLES = 48000;
 
-	int srate = 48000;
+	int srate = 480000; //144000; //48000;
 	SvfCoefficients coefs;
 	std::array<SvfCoefficients, MAX_MODES> coefsTemp = {};
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
-	//std::array<std::array<float, MAX_DELAY_SAMPLES>, MAX_MODES> delayBuffers = {};
-	//std::array<int, MAX_MODES> writeIdxs = {};
-
 	std::array<float, MAX_DELAY_SAMPLES> delayBuffer = {};
-	//std::array<int, MAX_MODES> writeIdxs = {};
-
 	int writeIdx;
 
 	StructureParams sParams;
 
 	String string;
 	Drum drum;
+
+	// Delay states
+	static constexpr size_t DELAY_DIAL_STATES = 2;
+	std::array<std::array<float, MAX_MODES>, DELAY_DIAL_STATES> delayDialStates = {};
 
 	Modal() 
 	{
@@ -80,7 +82,8 @@ struct Modal : Module
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
 		configParam(DECAY_PARAM, 0.0f, 1.0f, 0.5f, "Decay");
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
-		configParam(DELAY_PARAM, 0.0f, 1.0f, 0.0f, "Delay", " s");
+		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Delay Time", " s");
+		configParam(DELAY_TYPE_PARAM, 0.0f, 1.0f, 0.0f, "Delay Type");
 		// Inputs
 		configInput(EXCITER_INPUT, "Exciter");
 		configInput(PITCH_INPUT, "1V/octave pitch");
@@ -88,11 +91,32 @@ struct Modal : Module
 		configInput(POSITION_INPUT, "Position CV");
 		configInput(DECAY_INPUT, "Decay CV");
 		configInput(TIMBRE_INPUT, "Timbre CV");
-
 		// Outputs
 		configOutput(AUDIO_OUTPUT, "Output");
 
+		// Build delay dial states
+		buildDelayDialStates();
+
 		onSampleRateChange();
+	}
+
+	void buildDelayDialStates() {
+		
+		// Mode dependant
+		float stateTwoCurve = 100.0f;
+
+		for (int i = 0; i < MAX_MODES; i++)
+		{
+			float x = static_cast<float>(i) / (MAX_MODES - 1);
+
+			// Linear
+			delayDialStates[0][i] = x;
+
+			// Exponential
+			delayDialStates[1][i] = (std::pow(stateTwoCurve, x) - 1.0f) / (stateTwoCurve - 1.0f);
+		}
+		
+		// TODO: Freq dependant
 	}
 
 	void onSampleRateChange() override 
@@ -150,18 +174,19 @@ struct Modal : Module
 		string.setParams(sParams);
 		
 		// Exciter delay
-		float delayParam = params[DELAY_PARAM].getValue();
-		// Have a max delay time and the scale into it
-		
+		float delayTimeParam = params[DELAY_TIME_PARAM].getValue();
+		float delayTypeParam = params[DELAY_TYPE_PARAM].getValue();
+
+
+
 		// Write into the buffer
 		delayBuffer[writeIdx] = exciterIn;
-
-		float delayAmount = MAX_DELAY_SAMPLES / MAX_MODES;
 
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
 		{
 			// Delay
+			/*
 			int delaySamples = i * delayAmount * delayParam;
 			int readIdx = writeIdx - delaySamples;
 
@@ -169,11 +194,37 @@ struct Modal : Module
 				readIdx += MAX_DELAY_SAMPLES;
 
 			float exciterOut = delayBuffer[readIdx];
+			*/
 
+			//float x = static_cast<float>(i) / (MAX_MODES - 1);
+
+			// Exponential spacing
+			//float delayCurve = 10.0f;
+
+			//float delayNorm = x;
+			//if (delayCurve != 1.0f) {
+			//	delayNorm = (std::pow(delayCurve, x) - 1.0f) / (delayCurve - 1.0f);
+			//}
+
+			//float delayNorm = delayDialStates[1][i];
+
+			float delayNorm = (1.0f - delayTypeParam) * delayDialStates[0][i] + delayTypeParam * delayDialStates[1][i];
+
+			int delaySamples = static_cast<int>(delayNorm * MAX_DELAY_SAMPLES * delayTimeParam);
+
+			int readIdx = writeIdx - delaySamples;
+
+			while (readIdx < 0)
+				readIdx += MAX_DELAY_SAMPLES;
+
+			float exciterOut = delayBuffer[readIdx];
+
+			// Structure
 			coefs = {};
 			coefs = string.getCoefficients(i);
 			coefsTemp[i] = coefs;
 
+			// Filter bank
 			resonators[i].setCoefficients(coefs);
 			resonators[i].process(exciterOut);
 
@@ -209,7 +260,8 @@ struct ModalModuleWidget : ModuleWidget
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.0f, 60.0f)), module, Modal::POSITION_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.0f, 80.0f)), module, Modal::DECAY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.0f, 20.0f)), module, Modal::DELAY_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.0f, 40.0f)), module, Modal::DELAY_TYPE_PARAM));
 
 		// Inputs
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(8.0f, 10.0f)), module, Modal::EXCITER_INPUT));
