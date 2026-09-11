@@ -3,6 +3,8 @@
 #include <array>
 #include <cmath>
 
+// TODO: clamp freq range
+
 struct StructureParams {
 	float fundamentalFreq = 220.0f;
 	float morph = 0.5f;

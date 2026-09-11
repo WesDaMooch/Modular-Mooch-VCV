@@ -2,10 +2,10 @@
 
 #include "plugin.hpp"
 #include <array>
-#include <vector>
 #include "Modal\common.hpp"
 #include "Modal\chamberlinSVF.hpp"
 #include "Modal\structures.hpp"
+#include "Modal\exciterDelay.hpp"
 
 // Ideas
 // Multiple layers of modes
@@ -18,6 +18,12 @@
 // Linear freq (low high)
 // Xfade
 // ...
+
+// TODO:
+// Attack amount
+// Seperate 'timbre' (Q) and brightness knobs?
+
+// TODO: add exciter trigger
 
 struct Modal : Module
 {
@@ -54,24 +60,20 @@ struct Modal : Module
 	};
 
 	// DSP
-	static constexpr int MAX_DELAY_SAMPLES = 48000;
-
-	int srate = 480000; //144000; //48000;
-	SvfCoefficients coefs;
-	std::array<SvfCoefficients, MAX_MODES> coefsTemp = {};
-	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
+	static constexpr int MAX_DELAY_SAMPLES = 144000; // 3 seconds ish
+	int srate = 48000; 
 
 	std::array<float, MAX_DELAY_SAMPLES> delayBuffer = {};
 	int writeIdx;
 
-	StructureParams sParams;
+	SvfCoefficients coefs;
+	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
+
+	ExciterDelay exciterDelay;
 
 	String string;
 	Drum drum;
-
-	// Delay states
-	static constexpr size_t DELAY_DIAL_STATES = 2;
-	std::array<std::array<float, MAX_MODES>, DELAY_DIAL_STATES> delayDialStates = {};
+	StructureParams sParams;
 
 	Modal() 
 	{
@@ -82,7 +84,7 @@ struct Modal : Module
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
 		configParam(DECAY_PARAM, 0.0f, 1.0f, 0.5f, "Decay");
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
-		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Delay Time", " s");
+		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Delay Time");
 		configParam(DELAY_TYPE_PARAM, 0.0f, 1.0f, 0.0f, "Delay Type");
 		// Inputs
 		configInput(EXCITER_INPUT, "Exciter");
@@ -94,29 +96,7 @@ struct Modal : Module
 		// Outputs
 		configOutput(AUDIO_OUTPUT, "Output");
 
-		// Build delay dial states
-		buildDelayDialStates();
-
 		onSampleRateChange();
-	}
-
-	void buildDelayDialStates() {
-		
-		// Mode dependant
-		float stateTwoCurve = 100.0f;
-
-		for (int i = 0; i < MAX_MODES; i++)
-		{
-			float x = static_cast<float>(i) / (MAX_MODES - 1);
-
-			// Linear
-			delayDialStates[0][i] = x;
-
-			// Exponential
-			delayDialStates[1][i] = (std::pow(stateTwoCurve, x) - 1.0f) / (stateTwoCurve - 1.0f);
-		}
-		
-		// TODO: Freq dependant
 	}
 
 	void onSampleRateChange() override 
@@ -177,8 +157,6 @@ struct Modal : Module
 		float delayTimeParam = params[DELAY_TIME_PARAM].getValue();
 		float delayTypeParam = params[DELAY_TYPE_PARAM].getValue();
 
-
-
 		// Write into the buffer
 		delayBuffer[writeIdx] = exciterIn;
 
@@ -186,30 +164,7 @@ struct Modal : Module
 		for (int i = 0; i < MAX_MODES; i++)
 		{
 			// Delay
-			/*
-			int delaySamples = i * delayAmount * delayParam;
-			int readIdx = writeIdx - delaySamples;
-
-			if (readIdx < 0)
-				readIdx += MAX_DELAY_SAMPLES;
-
-			float exciterOut = delayBuffer[readIdx];
-			*/
-
-			//float x = static_cast<float>(i) / (MAX_MODES - 1);
-
-			// Exponential spacing
-			//float delayCurve = 10.0f;
-
-			//float delayNorm = x;
-			//if (delayCurve != 1.0f) {
-			//	delayNorm = (std::pow(delayCurve, x) - 1.0f) / (delayCurve - 1.0f);
-			//}
-
-			//float delayNorm = delayDialStates[1][i];
-
-			float delayNorm = (1.0f - delayTypeParam) * delayDialStates[0][i] + delayTypeParam * delayDialStates[1][i];
-
+			float delayNorm = exciterDelay.getNorm(i, delayTypeParam);
 			int delaySamples = static_cast<int>(delayNorm * MAX_DELAY_SAMPLES * delayTimeParam);
 
 			int readIdx = writeIdx - delaySamples;
@@ -222,7 +177,6 @@ struct Modal : Module
 			// Structure
 			coefs = {};
 			coefs = string.getCoefficients(i);
-			coefsTemp[i] = coefs;
 
 			// Filter bank
 			resonators[i].setCoefficients(coefs);

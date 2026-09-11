@@ -42,6 +42,7 @@ void String::update() {
 
 		// Timbre
 		// TODO: Update curve behaviour, see Max/MSP patch
+		// Dial (left to rigth) = Mode 0 only -> plucked string -> all modes on -> high modes
 		float x = float(n - 1) / float(MAX_MODES - 1);
 		float amount = std::min(std::abs(timbre) / 3.0f, 1.0f);
 
@@ -49,7 +50,6 @@ void String::update() {
 
 		if (timbre < 0.0f)
 			curve = 1.0f - x;
-		
 		else
 			curve = x;
 
