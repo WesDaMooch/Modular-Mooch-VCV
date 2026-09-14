@@ -29,6 +29,7 @@ struct Modal : Module
 {
 	enum ParamId
 	{
+		TRIG_PARAM,
 		PITCH_PARAM,
 		MORPH_PARAM,
 		POSITION_PARAM,
@@ -40,6 +41,7 @@ struct Modal : Module
 	};
 	enum InputId
 	{
+		TRIG_INPUT,
 		EXCITER_INPUT,
 		PITCH_INPUT,
 		MORPH_INPUT,
@@ -59,9 +61,11 @@ struct Modal : Module
 		LIGHTS_LEN
 	};
 
-	// DSP
 	static constexpr int MAX_DELAY_SAMPLES = 144000; // 3 seconds ish
 	int srate = 48000; 
+
+	dsp::BooleanTrigger trigBoolean;
+	dsp::PulseGenerator trigPulse;
 
 	std::array<float, MAX_DELAY_SAMPLES> delayBuffer = {};
 	int writeIdx;
@@ -79,6 +83,7 @@ struct Modal : Module
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
+		configButton(TRIG_PARAM, "Trigger");
 		configParam(PITCH_PARAM, -54.0f, 54.0f, 0.0f, "Pitch", " Hz", dsp::FREQ_SEMITONE, dsp::FREQ_C4);
 		configParam(MORPH_PARAM, 0.0f, 1.0f, 0.5f, "Morph");
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
@@ -127,10 +132,20 @@ struct Modal : Module
 	
 	void process(const ProcessArgs& args) override
 	{
+
+		// Trigger button
+		bool trig = params[TRIG_PARAM].getValue() > 0.f;
+
+		if (trigBoolean.process(trig)) {
+			trigPulse.trigger(1e-3f);
+		}
+
+		float exciterIn = trigPulse.process(args.sampleTime) ? 0.0f : 1.0f;
+
 		// Audio input
-		float exciterIn = inputs[EXCITER_INPUT].getVoltage();
-		exciterIn *= 0.1f;	// Convert to digital audio range (-1 tp +1)
-		exciterIn = mClamp(exciterIn, -1.0f, 1.0f);
+		//float exciterIn = inputs[EXCITER_INPUT].getVoltage();
+		//exciterIn *= 0.1f;	// Convert to digital audio range (-1 tp +1)
+		//exciterIn = mClamp(exciterIn, -1.0f, 1.0f);
 
 		float pitch = (params[PITCH_PARAM].getValue() / 12.f) + inputs[PITCH_INPUT].getVoltage();
 		float freq = dsp::FREQ_C4 * dsp::exp2_taylor5(pitch);
@@ -209,23 +224,24 @@ struct ModalModuleWidget : ModuleWidget
 		addChild(createWidget<ThemedScrew>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		addChild(createWidget<ThemedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		// Parameters
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.0f, 20.0f)), module, Modal::PITCH_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.0f, 40.0f)), module, Modal::MORPH_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.0f, 60.0f)), module, Modal::POSITION_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.0f, 80.0f)), module, Modal::DECAY_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.0f, 40.0f)), module, Modal::DELAY_TYPE_PARAM));
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(10.0f, 20.0f)), module, Modal::TRIG_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 20.0f)), module, Modal::PITCH_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 40.0f)), module, Modal::MORPH_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 60.0f)), module, Modal::POSITION_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 80.0f)), module, Modal::DECAY_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 40.0f)), module, Modal::DELAY_TYPE_PARAM));
 
 		// Inputs
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(8.0f, 10.0f)), module, Modal::EXCITER_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(8.0f, 20.0f)), module, Modal::PITCH_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(8.0f, 40.0f)), module, Modal::MORPH_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(8.0f, 60.0f)), module, Modal::POSITION_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(8.0f, 80.0f)), module, Modal::DECAY_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(8.0f, 100.0f)), module, Modal::TIMBRE_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.0f, 40.0f)), module, Modal::EXCITER_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 20.0f)), module, Modal::PITCH_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 40.0f)), module, Modal::MORPH_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 60.0f)), module, Modal::POSITION_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 80.0f)), module, Modal::DECAY_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 100.0f)), module, Modal::TIMBRE_INPUT));
 		// Ouputs
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(8.0f, 99.852f)), module, Modal::AUDIO_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(120.0f, 99.852f)), module, Modal::AUDIO_OUTPUT));
 	}
 	
 	void appendContextMenu(Menu* menu) override
