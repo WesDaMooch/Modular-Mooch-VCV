@@ -20,10 +20,8 @@
 // ...
 
 // TODO:
-// Attack amount
+// Exciter goes into spectal env -> an amount of pre gain to the exciter input to a mode 
 // Seperate 'timbre' (Q) and brightness knobs?
-
-// TODO: add exciter trigger
 
 struct Modal : Module
 {
@@ -144,7 +142,7 @@ struct Modal : Module
 
 		if (trigBoolean.process(gate)) {
 			exciterParams = {};
-			exciterParams.attack = params[ATTACK_PARAM].getValue();
+			//exciterParams.attack = params[ATTACK_PARAM].getValue();
 			exciterParams.delayTime = params[DELAY_TIME_PARAM].getValue();
 			exciterParams.delayType = params[DELAY_TYPE_PARAM].getValue();
 
@@ -153,13 +151,6 @@ struct Modal : Module
 		}
 
 		exciter.update(args.sampleTime);
-
-		//float exciterIn = trigPulse.process(args.sampleTime) ? 0.0f : 1.0f;
-
-		// Audio input
-		//float exciterIn = inputs[EXCITER_INPUT].getVoltage();
-		//exciterIn *= 0.1f;	// Convert to digital audio range (-1 tp +1)
-		//exciterIn = mClamp(exciterIn, -1.0f, 1.0f);
 
 		float pitch = (params[PITCH_PARAM].getValue() / 12.f) + inputs[PITCH_INPUT].getVoltage();
 		float freq = dsp::FREQ_C4 * dsp::exp2_taylor5(pitch);
@@ -185,7 +176,7 @@ struct Modal : Module
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
 		{
-			Exciter::Out out = exciter.get(i);
+			float exciterOut = exciter.get(i);
 
 			// Structure
 			coefs = {};
@@ -193,10 +184,9 @@ struct Modal : Module
 
 			// Filter bank
 			resonators[i].setCoefficients(coefs);
-			resonators[i].process(out.value);
+			resonators[i].process(exciterOut);
 
 			output += resonators[i].bandpass();
-			output *= out.env;
 		}
 
 		exciter.advanceWriteIdx();
