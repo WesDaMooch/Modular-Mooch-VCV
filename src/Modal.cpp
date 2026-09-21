@@ -5,7 +5,7 @@
 #include "Modal\common.hpp"
 #include "Modal\chamberlinSVF.hpp"
 #include "Modal\structures.hpp"
-#include "Modal\exciterDelay.hpp"
+#include "Modal\exciter.hpp"
 
 // Ideas
 // Multiple layers of modes
@@ -33,6 +33,7 @@ struct Modal : Module
 		PITCH_PARAM,
 		MORPH_PARAM,
 		POSITION_PARAM,
+		ATTACK_PARAM,
 		DECAY_PARAM,
 		TIMBRE_PARAM,
 		DELAY_TIME_PARAM,
@@ -61,19 +62,17 @@ struct Modal : Module
 		LIGHTS_LEN
 	};
 
-	static constexpr int MAX_DELAY_SAMPLES = 144000; // 3 seconds ish
 	int srate = 48000; 
 
 	dsp::BooleanTrigger trigBoolean;
+	dsp::SchmittTrigger trigSchmitt;
 	dsp::PulseGenerator trigPulse;
-
-	std::array<float, MAX_DELAY_SAMPLES> delayBuffer = {};
-	int writeIdx;
 
 	SvfCoefficients coefs;
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
-	ExciterDelay exciterDelay;
+	Exciter exciter;
+	ExciterParams exciterParams;
 
 	String string;
 	Drum drum;
@@ -87,11 +86,13 @@ struct Modal : Module
 		configParam(PITCH_PARAM, -54.0f, 54.0f, 0.0f, "Pitch", " Hz", dsp::FREQ_SEMITONE, dsp::FREQ_C4);
 		configParam(MORPH_PARAM, 0.0f, 1.0f, 0.5f, "Morph");
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
+		configParam(ATTACK_PARAM, 0.f, 1.f, 0.f, "Attack");
 		configParam(DECAY_PARAM, 0.0f, 1.0f, 0.5f, "Decay");
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
 		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Delay Time");
 		configParam(DELAY_TYPE_PARAM, 0.0f, 1.0f, 0.0f, "Delay Type");
 		// Inputs
+		configInput(TRIG_INPUT, "Trigger");
 		configInput(EXCITER_INPUT, "Exciter");
 		configInput(PITCH_INPUT, "1V/octave pitch");
 		configInput(MORPH_INPUT, "Morph CV");
@@ -136,11 +137,24 @@ struct Modal : Module
 		// Trigger button
 		bool trig = params[TRIG_PARAM].getValue() > 0.f;
 
-		if (trigBoolean.process(trig)) {
-			trigPulse.trigger(1e-3f);
+		// Trigger input
+		trigSchmitt.process(inputs[TRIG_INPUT].getVoltage(), 0.1f, 1.f);
+
+		bool gate = trig || trigSchmitt.isHigh();
+
+		if (trigBoolean.process(gate)) {
+			exciterParams = {};
+			exciterParams.attack = params[ATTACK_PARAM].getValue();
+			exciterParams.delayTime = params[DELAY_TIME_PARAM].getValue();
+			exciterParams.delayType = params[DELAY_TYPE_PARAM].getValue();
+
+			//trigPulse.trigger(1e-3f);
+			exciter.trigger(exciterParams);
 		}
 
-		float exciterIn = trigPulse.process(args.sampleTime) ? 0.0f : 1.0f;
+		exciter.update(args.sampleTime);
+
+		//float exciterIn = trigPulse.process(args.sampleTime) ? 0.0f : 1.0f;
 
 		// Audio input
 		//float exciterIn = inputs[EXCITER_INPUT].getVoltage();
@@ -167,27 +181,11 @@ struct Modal : Module
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
 		sParams.timbre = mClamp(timbre, 0.0f, 1.0f);
 		string.setParams(sParams);
-		
-		// Exciter delay
-		float delayTimeParam = params[DELAY_TIME_PARAM].getValue();
-		float delayTypeParam = params[DELAY_TYPE_PARAM].getValue();
-
-		// Write into the buffer
-		delayBuffer[writeIdx] = exciterIn;
 
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
 		{
-			// Delay
-			float delayNorm = exciterDelay.getNorm(i, delayTypeParam);
-			int delaySamples = static_cast<int>(delayNorm * MAX_DELAY_SAMPLES * delayTimeParam);
-
-			int readIdx = writeIdx - delaySamples;
-
-			while (readIdx < 0)
-				readIdx += MAX_DELAY_SAMPLES;
-
-			float exciterOut = delayBuffer[readIdx];
+			Exciter::Out out = exciter.get(i);
 
 			// Structure
 			coefs = {};
@@ -195,19 +193,18 @@ struct Modal : Module
 
 			// Filter bank
 			resonators[i].setCoefficients(coefs);
-			resonators[i].process(exciterOut);
+			resonators[i].process(out.value);
 
 			output += resonators[i].bandpass();
+			output *= out.env;
 		}
 
-		// Advance write index
-		writeIdx++;
-		if (writeIdx >= MAX_DELAY_SAMPLES)
-			writeIdx = 0;
+		exciter.advanceWriteIdx();
 
 		output = output * string.getActiveModesScaler();
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
+		//outputs[AUDIO_OUTPUT].setVoltage(exciter.get(0).env);
 	}		
 };
 
@@ -228,20 +225,22 @@ struct ModalModuleWidget : ModuleWidget
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 20.0f)), module, Modal::PITCH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 40.0f)), module, Modal::MORPH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 60.0f)), module, Modal::POSITION_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 80.0f)), module, Modal::ATTACK_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 80.0f)), module, Modal::DECAY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 40.0f)), module, Modal::DELAY_TYPE_PARAM));
 
 		// Inputs
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.0f, 40.0f)), module, Modal::EXCITER_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.0f, 40.0f)), module, Modal::TRIG_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.0f, 60.0f)), module, Modal::EXCITER_INPUT));
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 20.0f)), module, Modal::PITCH_INPUT));
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 40.0f)), module, Modal::MORPH_INPUT));
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 60.0f)), module, Modal::POSITION_INPUT));
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 80.0f)), module, Modal::DECAY_INPUT));
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 100.0f)), module, Modal::TIMBRE_INPUT));
 		// Ouputs
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(120.0f, 99.852f)), module, Modal::AUDIO_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(80.f, 100.f)), module, Modal::AUDIO_OUTPUT));
 	}
 	
 	void appendContextMenu(Menu* menu) override
