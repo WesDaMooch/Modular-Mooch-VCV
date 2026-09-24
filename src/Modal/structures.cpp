@@ -2,6 +2,7 @@
 
 
 String::String() {
+	buildLuts();
 	update();
 }
 
@@ -17,53 +18,72 @@ void String::setParams(StructureParams& newParams) {
 	fundamentalFreq = mClamp(newParams.fundamentalFreq, minFreq, maxFreq);
 	inharmonicity = mMap(newParams.morph, -0.999f, 0.999f);
 	position = mMap(newParams.position, 0.0001f, 0.9999f);
-	decay = mMap(newParams.decay, 0.5f, 250.0f);
+	baseDecay = mMap(newParams.decay, 0.5f, 250.0f);
 	timbre = mMap(newParams.timbre, -3.0f, 3.0f);
+	amplitudeDialIdx = static_cast<int>(mMap(newParams.timbre, 0.f, (float)(DIAL_RESOLUTION - 1)));
+	decaySlopeIdx = static_cast<int>(mMap(newParams.timbre, 0.f, (float)(DIAL_RESOLUTION - 1)));
 
 	prevParams = newParams;
 	update();
 }
 
 void String::update() {
-	float qMin = 1.0f;
+	//float qMin = 1.0f;
 	activeModes = 0;
 
 	for (size_t idx = 0; idx < MAX_MODES; idx++) {
 		int n = idx + 1;
 
 		// Pitch
-		float f = fundamentalFreq * std::pow(static_cast<float>(n), 1.0f + inharmonicity);
+		float f = fundamentalFreq * std::pow(static_cast<float>(n), 1.f + inharmonicity);
 		coefs[idx].freq = f;
 
 		if (f < minFreq || f > maxFreq) {
 			coefs[idx].amplitude = 0.0f;
+			coefs[idx].q = 1.f;
 			continue;
 		}
 
-		// Timbre
-		// TODO: Update curve behaviour, see Max/MSP patch
-		// Dial (left to rigth) = Mode 0 only -> plucked string -> all modes on -> high modes
-		float x = float(n - 1) / float(MAX_MODES - 1);
-		float amount = std::min(std::abs(timbre) / 3.0f, 1.0f);
+		// Amplitude
+		/*
+		float modePosition = float(n - 1) / float(MAX_MODES - 1);
 
-		float curve = 0.0f;
+		float modeAmp = 1.0f;
 
-		if (timbre < 0.0f)
-			curve = 1.0f - x;
-		else
-			curve = x;
+		if (timbre < 0.25f) {
+			float fade = mRemap(timbre, 0.0f, 0.25f);
 
-		curve = (1.0f - amount) * 1.0f + amount * curve;
+			// fade: 0 = strong low emphasis, 1 = flat
+			float tilt = mInterp(fade, 1.0f, 0.0f);
 
-		// Decay (Q)
-		coefs[idx].q =  qMin + (decay - qMin) * curve; //decay * curve;
+			modeAmp = 1.0f - (modePosition * tilt);
+		}
+		else if (timbre > 0.75f) {
+			float fade = mRemap(timbre, 0.75f, 1.0f);
+
+			// fade: 0 = flat, 1 = strong high emphasis
+			float tilt = fade;
+
+			modeAmp = 1.0f - ((1.0f - modePosition) * (1.0f - tilt));
+		}
+		*/
+
+		float positionAmp = std::sin(M_PI * n * position);
+		coefs[idx].amplitude = positionAmp * amplitudeDialLut[idx][amplitudeDialIdx];
 
 		// Amplitude
-		float positionAmplitude = std::sin(M_PI * n * position);
-		coefs[idx].amplitude = positionAmplitude * curve;
+		//float positionAmplitude = std::sin(M_PI * n * position);
+		//coefs[idx].amplitude = positionAmplitude * std::pow(float(n), -amplitudeSlopeLut[amplitudeSlopeIdx]);
+			
+		// Decay (Q)
+		coefs[idx].q = baseDecay * std::pow(float(n), -decaySlopeLut[decaySlopeIdx]);
 
 		activeModes++;		
 	}
+}
+
+float String::getActiveModesScaler() const {
+	return activeModes > 0 ? 1.0f / activeModes : 0.0f;
 }
 
 SvfCoefficients String::getCoefficients(int idx) {
@@ -71,9 +91,39 @@ SvfCoefficients String::getCoefficients(int idx) {
 	return coefs[idx];
 }
 
-float String::getActiveModesScaler() const {
-	return activeModes > 0 ? 1.0f / activeModes : 0.0f;
+void String::buildLuts() {
+	static constexpr float delaySlopeMax = 2.f;	// Damped or muted
+
+	for (int dialIdx = 0; dialIdx < DIAL_RESOLUTION; dialIdx++) {
+		float value = static_cast<float>(dialIdx) / (DIAL_RESOLUTION - 1);
+
+		float delaySlope = mRemapInv(value, 0.20f, 0.66f);
+		decaySlopeLut[dialIdx] = delaySlope * delaySlopeMax;
+
+		for (int modeIdx = 0; modeIdx < MAX_MODES; modeIdx++) {
+
+			float modePosition = float(modeIdx) / float(MAX_MODES - 1);
+
+			float amp = 1.f;
+
+			if (value < 0.20f) {
+				// High modes fade out
+				float modeCurve = std::pow(modePosition, 0.01f);
+				float fade = mRemap(value, 0.f, 0.20f);
+				amp = 1.0f - modeCurve * (1.f - fade);
+			}
+			else if (value > 0.66f) {
+				// Low modes fade out
+				float fade = mRemap(value, 0.66f, 1.f);
+				amp = modePosition + (1.f - modePosition) * (1.f - fade);
+			}
+
+			amplitudeDialLut[modeIdx][dialIdx] = amp;
+		}
+	}
 }
+
+
 
 
 
@@ -170,6 +220,13 @@ float Drum2::bessel(int order, float x)
 
 	return (2.0 * (order - 1) / x) * bessel(order - 1, x) - bessel(order - 2, x);
 }
+
+
+
+
+
+
+
 
 
 

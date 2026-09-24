@@ -14,6 +14,11 @@
 // Exciter goes into spectal env -> an amount of pre gain to the exciter input to a mode 
 // Seperate 'timbre' (Q) and brightness knobs?
 
+// String
+// decay is exp (or modelled) q, decay param just controls base decay
+// Timbre controls amp, not q
+
+
 struct Modal : Module
 {
 	enum ParamId
@@ -160,8 +165,8 @@ struct Modal : Module
 		float timbreCv = inputs[TIMBRE_INPUT].getVoltage() * 0.1f;
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
 		sParams.timbre = mClamp(timbre, 0.0f, 1.0f);
-		//string.setParams(sParams);
-		drum.setParams(sParams);
+		string.setParams(sParams);
+		//drum.setParams(sParams);
 
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
@@ -170,8 +175,8 @@ struct Modal : Module
 
 			// Structure
 			coefs = {};
-			//coefs = string.getCoefficients(i);
-			coefs = drum.getCoefficients(i);
+			coefs = string.getCoefficients(i);
+			//coefs = drum.getCoefficients(i);
 
 			// Filter bank
 			resonators[i].setCoefficients(coefs);
@@ -182,8 +187,8 @@ struct Modal : Module
 
 		exciter.advanceWriteIdx();
 
-		//output = output * string.getActiveModesScaler();
-		output = output * drum.getActiveModesScaler();
+		output = output * string.getActiveModesScaler();
+		//output = output * drum.getActiveModesScaler();
 
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);

@@ -41,19 +41,33 @@ protected:
 	int sr = 48000;
 	int activeModes = 0;
 
-	float minFreq = 20.0f;
+	constexpr static float minFreq = 20.0f;
 	float maxFreq = sr * 0.5f;
 
 	float fundamentalFreq = 220.0f;
-	float inharmonicity = 0.0f;
-	float position = 0.5f;
-	float decay = 1.0f;
-	float timbre = 0.0f;
+	float inharmonicity = 0.f;
+	float position = 0.0001f;
+	float baseDecay = 0.5f;
+	float timbre = 0.f;
 
+	int decaySlopeIdx = 0;
+	std::array<float, DIAL_RESOLUTION> decaySlopeLut = {};
+
+	int amplitudeDialIdx = 0;
+	//std::array<float, DIAL_RESOLUTION> amplitudeSlopeLut = {};
+	//std::array<float, DIAL_RESOLUTION> amplitudeDialLut = {};
+	std::array<std::array<float, DIAL_RESOLUTION>, MAX_MODES> amplitudeDialLut = {};
 
 	std::array<SvfCoefficients, MAX_MODES> coefs;
 	StructureParams prevParams;
+
+	void buildLuts();
 };
+
+
+
+
+
 
 
 class Drum2
