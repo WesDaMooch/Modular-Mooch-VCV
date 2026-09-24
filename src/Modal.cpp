@@ -10,15 +10,6 @@
 // Ideas
 // Multiple layers of modes
 
-// Decay Type Knob
-//
-// Linear mode idx (low high)
-// Exp mode idx (low high)
-// Exp freq (low high)
-// Linear freq (low high)
-// Xfade
-// ...
-
 // TODO:
 // Exciter goes into spectal env -> an amount of pre gain to the exciter input to a mode 
 // Seperate 'timbre' (Q) and brightness knobs?
@@ -64,7 +55,6 @@ struct Modal : Module
 
 	dsp::BooleanTrigger trigBoolean;
 	dsp::SchmittTrigger trigSchmitt;
-	dsp::PulseGenerator trigPulse;
 
 	SvfCoefficients coefs;
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
@@ -73,7 +63,7 @@ struct Modal : Module
 	ExciterParams exciterParams;
 
 	String string;
-	Drum drum;
+	Drum2 drum;
 	StructureParams sParams;
 
 	Modal() 
@@ -106,6 +96,7 @@ struct Modal : Module
 	void onSampleRateChange() override 
 	{
 		srate = APP->engine->getSampleRate();
+		string.setSamplerate(srate);
 		drum.setSamplerate(srate);
 
 		for (auto& resonator : resonators)
@@ -131,7 +122,6 @@ struct Modal : Module
 	
 	void process(const ProcessArgs& args) override
 	{
-
 		// Trigger button
 		bool trig = params[TRIG_PARAM].getValue() > 0.f;
 
@@ -146,7 +136,6 @@ struct Modal : Module
 			exciterParams.delayTime = params[DELAY_TIME_PARAM].getValue();
 			exciterParams.delayType = params[DELAY_TYPE_PARAM].getValue();
 
-			//trigPulse.trigger(1e-3f);
 			exciter.trigger(exciterParams);
 		}
 
@@ -171,7 +160,8 @@ struct Modal : Module
 		float timbreCv = inputs[TIMBRE_INPUT].getVoltage() * 0.1f;
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
 		sParams.timbre = mClamp(timbre, 0.0f, 1.0f);
-		string.setParams(sParams);
+		//string.setParams(sParams);
+		drum.setParams(sParams);
 
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
@@ -180,7 +170,8 @@ struct Modal : Module
 
 			// Structure
 			coefs = {};
-			coefs = string.getCoefficients(i);
+			//coefs = string.getCoefficients(i);
+			coefs = drum.getCoefficients(i);
 
 			// Filter bank
 			resonators[i].setCoefficients(coefs);
@@ -191,7 +182,9 @@ struct Modal : Module
 
 		exciter.advanceWriteIdx();
 
-		output = output * string.getActiveModesScaler();
+		//output = output * string.getActiveModesScaler();
+		output = output * drum.getActiveModesScaler();
+
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
 		//outputs[AUDIO_OUTPUT].setVoltage(exciter.get(0).env);

@@ -14,24 +14,24 @@ void Exciter::buildLuts() {
         float reverseX = (x - 1.0f) * -1.0f;
 
         // Specral Env
-        spectralEnvLut[i] = reverseX;
+        spectralEnvLut[i] = 1.f;  //reverseX;
 
         // Delay //
-        // State 0 - Decreasing linear
-        delayTypeLuts[0][i] = x;
+        // Type 0 - Decreasing exponential
+        delayTypeLuts[0][i] = (std::pow(delayExpCurve, x) - 1.f) / (delayExpCurve - 1.f);
+        
+        // Type 1 - Decreasing linear
+        delayTypeLuts[1][i] = x;
 
-        // State 1 - Decreasing exponential
-        delayTypeLuts[1][i] = (std::pow(delayExpCurve, x) - 1.f) / (delayExpCurve - 1.f);
-
-        // TODO: State 2 - Random grain
-        delayTypeLuts[2][i] = 0.f;
-
-        // State 3 - Increasing exponential
-        delayTypeLuts[3][i] = (std::pow(delayExpCurve, reverseX) - 1.f) / (delayExpCurve - 1.f);
-
-        // State 4 - Increasing linear
+        // Type 3 - Increasing linear
         delayTypeLuts[3][i] = reverseX;
+
+        // Type 4 - Increasing exponential
+        delayTypeLuts[4][i] = (std::pow(delayExpCurve, reverseX) - 1.f) / (delayExpCurve - 1.f);
     }
+
+    // Type 2 - Random delay
+    buildRandomDelay();
 }
 
 void Exciter::trigger(ExciterParams params) {
@@ -44,6 +44,7 @@ void Exciter::trigger(ExciterParams params) {
     // Delay
     delayTime = mClamp(params.delayTime, 0.f, 1.f);
     delayType = mClamp(params.delayType, 0.0f, 1.0f);
+    buildRandomDelay();
 }
 
 
@@ -112,6 +113,13 @@ void Exciter::advanceWriteIdx() {
     writeIdx++;
     if (writeIdx >= MAX_DELAY_SAMPLES)
         writeIdx = 0;
+}
+
+
+void Exciter::buildRandomDelay() {
+    // Type 2 - Random delay
+    for (int i = 0; i < MAX_MODES; i++)
+        delayTypeLuts[2][i] = randomValue();
 }
 
 

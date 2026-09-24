@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cmath>
+#include <random>
 #include "common.hpp"
 
 
@@ -30,6 +31,8 @@ public:
 	float get(int modeIdx);
 
 protected:
+	void buildLuts();
+
 	enum Stage {
 		IDLE,
 		ATTACK,
@@ -58,6 +61,13 @@ protected:
 	static constexpr int NUM_DELAY_TYPES = 5;
 	std::array<std::array<float, MAX_MODES>, NUM_DELAY_TYPES> delayTypeLuts = {};
 
-	void buildLuts();
+	std::mt19937 rng{ std::random_device{}() };
+
+	inline float randomValue() {
+		std::uniform_real_distribution<float> dist(0.f, 1.f);
+		return dist(rng);
+	}
+
+	void buildRandomDelay();
 	float getDelay(int modeIdx);
 };
