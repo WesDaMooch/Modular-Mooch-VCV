@@ -11,7 +11,7 @@ void String::setSamplerate(int newSamplerate) {
 	maxFreq = sr * 0.5f;
 }
 
-void String::setParams(StructureParams& newParams) {
+void String::setParams(const StructureParams& newParams) {
 	if (newParams == prevParams)
 		return;
 	
@@ -19,16 +19,14 @@ void String::setParams(StructureParams& newParams) {
 	inharmonicity = mMap(newParams.morph, -0.999f, 0.999f);
 	position = mMap(newParams.position, 0.0001f, 0.9999f);
 	baseDecay = mMap(newParams.decay, 0.5f, 250.0f);
-	timbre = mMap(newParams.timbre, -3.0f, 3.0f);
 	amplitudeDialIdx = static_cast<int>(mMap(newParams.timbre, 0.f, (float)(DIAL_RESOLUTION - 1)));
-	decaySlopeIdx = static_cast<int>(mMap(newParams.timbre, 0.f, (float)(DIAL_RESOLUTION - 1)));
+	decayDialIdx = static_cast<int>(mMap(newParams.timbre, 0.f, (float)(DIAL_RESOLUTION - 1)));
 
 	prevParams = newParams;
 	update();
 }
 
 void String::update() {
-	//float qMin = 1.0f;
 	activeModes = 0;
 
 	for (size_t idx = 0; idx < MAX_MODES; idx++) {
@@ -39,44 +37,18 @@ void String::update() {
 		coefs[idx].freq = f;
 
 		if (f < minFreq || f > maxFreq) {
-			coefs[idx].amplitude = 0.0f;
+			coefs[idx].freq = 220.f;
+			coefs[idx].amplitude = 0.f;
 			coefs[idx].q = 1.f;
 			continue;
 		}
 
 		// Amplitude
-		/*
-		float modePosition = float(n - 1) / float(MAX_MODES - 1);
-
-		float modeAmp = 1.0f;
-
-		if (timbre < 0.25f) {
-			float fade = mRemap(timbre, 0.0f, 0.25f);
-
-			// fade: 0 = strong low emphasis, 1 = flat
-			float tilt = mInterp(fade, 1.0f, 0.0f);
-
-			modeAmp = 1.0f - (modePosition * tilt);
-		}
-		else if (timbre > 0.75f) {
-			float fade = mRemap(timbre, 0.75f, 1.0f);
-
-			// fade: 0 = flat, 1 = strong high emphasis
-			float tilt = fade;
-
-			modeAmp = 1.0f - ((1.0f - modePosition) * (1.0f - tilt));
-		}
-		*/
-
 		float positionAmp = std::sin(M_PI * n * position);
 		coefs[idx].amplitude = positionAmp * amplitudeDialLut[idx][amplitudeDialIdx];
 
-		// Amplitude
-		//float positionAmplitude = std::sin(M_PI * n * position);
-		//coefs[idx].amplitude = positionAmplitude * std::pow(float(n), -amplitudeSlopeLut[amplitudeSlopeIdx]);
-			
 		// Decay (Q)
-		coefs[idx].q = baseDecay * std::pow(float(n), -decaySlopeLut[decaySlopeIdx]);
+		coefs[idx].q = baseDecay * std::pow(float(n), -decayDialLut[decayDialIdx]);
 
 		activeModes++;		
 	}
@@ -86,19 +58,25 @@ float String::getActiveModesScaler() const {
 	return activeModes > 0 ? 1.0f / activeModes : 0.0f;
 }
 
-SvfCoefficients String::getCoefficients(int idx) {
+const SvfCoefficients& String::getCoefficients(int idx) const {
 	idx = mClamp(idx, 0, MAX_MODES - 1);
 	return coefs[idx];
 }
 
 void String::buildLuts() {
-	static constexpr float delaySlopeMax = 2.f;	// Damped or muted
+	static constexpr float decaySlopeMax = 2.f;	// Damped / muted
+	static constexpr float decayDialStart = 0.2f;
+	static constexpr float decayDialEnd = 0.66f;
+
+	static constexpr float highModeAmpDialExp = 0.01f;
+	static constexpr float highModeAmpDialEnd = 0.2f;
+	static constexpr float lowModeAmpDialStart = 0.66f;
 
 	for (int dialIdx = 0; dialIdx < DIAL_RESOLUTION; dialIdx++) {
 		float value = static_cast<float>(dialIdx) / (DIAL_RESOLUTION - 1);
 
-		float delaySlope = mRemapInv(value, 0.20f, 0.66f);
-		decaySlopeLut[dialIdx] = delaySlope * delaySlopeMax;
+		float delaySlope = mRemapInv(value, decayDialStart, decayDialEnd);
+		decayDialLut[dialIdx] = delaySlope * decaySlopeMax;
 
 		for (int modeIdx = 0; modeIdx < MAX_MODES; modeIdx++) {
 
@@ -106,15 +84,15 @@ void String::buildLuts() {
 
 			float amp = 1.f;
 
-			if (value < 0.20f) {
+			if (value < highModeAmpDialEnd) {
 				// High modes fade out
-				float modeCurve = std::pow(modePosition, 0.01f);
-				float fade = mRemap(value, 0.f, 0.20f);
+				float modeCurve = std::pow(modePosition, highModeAmpDialExp);
+				float fade = mRemap(value, 0.f, highModeAmpDialEnd);
 				amp = 1.0f - modeCurve * (1.f - fade);
 			}
-			else if (value > 0.66f) {
+			else if (value > lowModeAmpDialStart) {
 				// Low modes fade out
-				float fade = mRemap(value, 0.66f, 1.f);
+				float fade = mRemap(value, lowModeAmpDialStart, 1.f);
 				amp = modePosition + (1.f - modePosition) * (1.f - fade);
 			}
 
@@ -135,10 +113,10 @@ Drum2::Drum2() {
 
 void Drum2::setSamplerate(int newSamplerate) {
 	sr = std::max(newSamplerate, 1);
-	maxFreq = sr * 0.5f; //0.25f?
+	maxFreq = sr * 0.25f;
 }
 
-void Drum2::setParams(StructureParams& newParams) {
+void Drum2::setParams(const StructureParams& newParams) {
 	if (newParams == prevParams)
 		return;
 
@@ -153,26 +131,38 @@ void Drum2::setParams(StructureParams& newParams) {
 }
 
 void Drum2::update() {
-	for (int i = 0; i < MAX_MODES; i++)
+	activeModes = 0;
+	for (size_t idx = 0; idx < MAX_MODES; idx++)
 	{
-		const Root& r = roots[i];
-		float weight = bessel(r.order, r.value * position);
-		coefs[i].amplitude = scale(weight, 0.f, 1.f, overtones, 1, damping);
-		coefs[i].freq = std::max(minFreq, std::min((r.value * tuning) / size, maxFreq));
-		coefs[i].q = 1.f;
+		const Root& r = roots[idx];
+		float f = (r.value * tuning) / size;
 
-		// TODO: get activemodes
+		if (f < minFreq || f > maxFreq) {
+			coefs[idx].freq = 220.f;
+			coefs[idx].amplitude = 0.f;
+			coefs[idx].q = 1.f;
+			continue;
+		}
+
+		coefs[idx].freq = f;
+
+		float weight = bessel(r.order, r.value * position);
+		coefs[idx].q = scale(weight, 0.f, 1.f, overtones, 1, damping) * 100.f;
+		coefs[idx].amplitude = 1.f;
+
+		activeModes++;
 	}
 }
 
-SvfCoefficients Drum2::getCoefficients(int idx) {
-	idx = mClamp(idx, 0, MAX_MODES - 1);
-	return coefs[idx];
-}
 
 float Drum2::getActiveModesScaler() const {
-	//return activeModes > 0 ? 1.0f / activeModes : 0.0f;
-	return 1.f;
+	return activeModes > 0 ? 1.0f / activeModes : 0.0f;
+}
+
+
+const SvfCoefficients& Drum2::getCoefficients(int idx)  const {
+	idx = mClamp(idx, 0, MAX_MODES - 1);
+	return coefs[idx];
 }
 
 

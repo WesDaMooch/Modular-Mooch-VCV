@@ -3,14 +3,17 @@
 #include <array>
 #include <cmath>
 
+
+static constexpr int NUM_STRUCTURES = 2;
+
 // TODO: clamp freq range
 
 struct StructureParams {
 	float fundamentalFreq = 220.0f;
-	float morph = 0.5f;
-	float position = 0.5f;
-	float decay = 0.5f;
-	float timbre = 0.5f;
+	float morph = 0.f;
+	float position = 0.f;
+	float decay = 0.f;
+	float timbre = 0.f;
 
 	bool operator==(const StructureParams& other) const {
 		return	fundamentalFreq	== other.fundamentalFreq && 
@@ -26,39 +29,50 @@ struct StructureParams {
 };
 
 
+class StructureBase {
+public:
+	virtual ~StructureBase() = default;  
+
+	virtual void setSamplerate(int newSamplerate) = 0;
+	virtual void setParams(const StructureParams& newParams) = 0;
+	virtual void update() = 0;
+	virtual float getActiveModesScaler() const = 0;
+	const virtual SvfCoefficients& getCoefficients(int idx) const = 0;
+
+	// TODO: Implement this cloning thing?
+	//virtual std::unique_ptr<StructureBase> clone() const = 0;
+};
+
+
 // String 
-class String
-{
+class String : public StructureBase {
 public:
 	String();
-	void setSamplerate(int newSamplerate);
-	void setParams(StructureParams& newParams);
-	void update();
-	float getActiveModesScaler() const; 
-	SvfCoefficients getCoefficients(int idx);
+	void setSamplerate(int newSamplerate) override;
+	void setParams(const StructureParams& newParams) override;
+	void update() override;
+	float getActiveModesScaler() const override;
+	const SvfCoefficients& getCoefficients(int idx) const override;
 
 protected:
 	int sr = 48000;
 	int activeModes = 0;
 
-	constexpr static float minFreq = 20.0f;
+	constexpr static float minFreq = 20.f;
 	float maxFreq = sr * 0.5f;
 
-	float fundamentalFreq = 220.0f;
+	float fundamentalFreq = 220.f;
 	float inharmonicity = 0.f;
 	float position = 0.0001f;
 	float baseDecay = 0.5f;
-	float timbre = 0.f;
 
-	int decaySlopeIdx = 0;
-	std::array<float, DIAL_RESOLUTION> decaySlopeLut = {};
+	int decayDialIdx = 0;
+	std::array<float, DIAL_RESOLUTION> decayDialLut = {};
 
 	int amplitudeDialIdx = 0;
-	//std::array<float, DIAL_RESOLUTION> amplitudeSlopeLut = {};
-	//std::array<float, DIAL_RESOLUTION> amplitudeDialLut = {};
 	std::array<std::array<float, DIAL_RESOLUTION>, MAX_MODES> amplitudeDialLut = {};
 
-	std::array<SvfCoefficients, MAX_MODES> coefs;
+	std::array<SvfCoefficients, MAX_MODES> coefs = {};
 	StructureParams prevParams;
 
 	void buildLuts();
@@ -70,15 +84,14 @@ protected:
 
 
 
-class Drum2
-{
+class Drum2 : public StructureBase {
 public:
 	Drum2();
-	void setSamplerate(int newSamplerate);
-	void setParams(StructureParams& newParams);
-	void update();
-	float getActiveModesScaler() const;
-	SvfCoefficients getCoefficients(int idx);
+	void setSamplerate(int newSamplerate) override;
+	void setParams(const StructureParams& newParams) override;
+	void update() override;
+	float getActiveModesScaler() const override;
+	const SvfCoefficients& getCoefficients(int idx) const override;
 	
 protected:
 	struct Root
@@ -98,7 +111,7 @@ protected:
 	int sr = 48000;
 	int activeModes = 0;
 
-	constexpr static float minFreq = 20.0f;
+	constexpr static float minFreq = 20.f;
 	float maxFreq = sr * 0.25f;
 
 	std::array<SvfCoefficients, MAX_MODES> coefs;

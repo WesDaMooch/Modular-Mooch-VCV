@@ -18,6 +18,15 @@
 // decay is exp (or modelled) q, decay param just controls base decay
 // Timbre controls amp, not q
 
+// Body resonitors
+// https://ccrma.stanford.edu/~jos/jnmr/Body_Resonators.html
+// Guitar / violin 
+// Piano soundboard
+// Voice formants?
+
+// Piano hammer model https://ccrma.stanford.edu/~jos/jnmr/Pianos.html
+
+// Old (0s Mackie desk style clipping?
 
 struct Modal : Module
 {
@@ -27,7 +36,7 @@ struct Modal : Module
 		PITCH_PARAM,
 		MORPH_PARAM,
 		POSITION_PARAM,
-		ATTACK_PARAM,
+		STRUCTURE_PARAM,
 		DECAY_PARAM,
 		TIMBRE_PARAM,
 		DELAY_TIME_PARAM,
@@ -61,17 +70,21 @@ struct Modal : Module
 	dsp::BooleanTrigger trigBoolean;
 	dsp::SchmittTrigger trigSchmitt;
 
+	//SvfCoefficients structCoefsA;
+	//SvfCoefficients structCoefsB;
 	SvfCoefficients coefs;
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
 	Exciter exciter;
 	ExciterParams exciterParams;
 
+	//int structIdx = 1;
+	std::array<StructureBase*, NUM_STRUCTURES> structures = {};
 	String string;
 	Drum2 drum;
 	StructureParams sParams;
 
-	Modal() 
+	Modal() : structures{ &string, &drum }
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
@@ -79,7 +92,7 @@ struct Modal : Module
 		configParam(PITCH_PARAM, -54.0f, 54.0f, 0.0f, "Pitch", " Hz", dsp::FREQ_SEMITONE, dsp::FREQ_C4);
 		configParam(MORPH_PARAM, 0.0f, 1.0f, 0.5f, "Morph");
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
-		configParam(ATTACK_PARAM, 0.f, 1.f, 0.f, "Attack");
+		configParam(STRUCTURE_PARAM, 0.f, 1.f, 0.f, "Strutcure");
 		configParam(DECAY_PARAM, 0.0f, 1.0f, 0.5f, "Decay");
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
 		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Delay Time");
@@ -101,8 +114,11 @@ struct Modal : Module
 	void onSampleRateChange() override 
 	{
 		srate = APP->engine->getSampleRate();
-		string.setSamplerate(srate);
-		drum.setSamplerate(srate);
+
+		for (auto* structure : structures) {
+			if (structure != nullptr)
+				structure->setSamplerate(srate);
+		}
 
 		for (auto& resonator : resonators)
 			resonator.setSamplerate(srate);
@@ -127,6 +143,23 @@ struct Modal : Module
 	
 	void process(const ProcessArgs& args) override
 	{
+		// Get structure
+		const float MAX_STRUCTURE = static_cast<float>(NUM_STRUCTURES - 1);
+		float structParam = mClamp(params[STRUCTURE_PARAM].getValue() * MAX_STRUCTURE, 0.f, MAX_STRUCTURE);
+
+		size_t structAIdx = static_cast<size_t>(std::floor(structParam));
+		size_t structBIdx = static_cast<size_t>(std::ceil(structParam));
+
+		StructureBase* structA = structures[structAIdx];
+		StructureBase* structB = nullptr;
+
+		if (structAIdx != structBIdx) {
+			structB = structures[structBIdx];
+		}
+
+		float structCrossfade = structParam - static_cast<float>(structAIdx);
+
+
 		// Trigger button
 		bool trig = params[TRIG_PARAM].getValue() > 0.f;
 
@@ -137,7 +170,6 @@ struct Modal : Module
 
 		if (trigBoolean.process(gate)) {
 			exciterParams = {};
-			//exciterParams.attack = params[ATTACK_PARAM].getValue();
 			exciterParams.delayTime = params[DELAY_TIME_PARAM].getValue();
 			exciterParams.delayType = params[DELAY_TYPE_PARAM].getValue();
 
@@ -165,19 +197,36 @@ struct Modal : Module
 		float timbreCv = inputs[TIMBRE_INPUT].getVoltage() * 0.1f;
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
 		sParams.timbre = mClamp(timbre, 0.0f, 1.0f);
-		string.setParams(sParams);
-		//drum.setParams(sParams);
+
+		if (structA != nullptr) {
+			structA->setParams(sParams);
+
+			if (structB != nullptr)
+				structB->setParams(sParams);
+		}
 
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
 		{
 			float exciterOut = exciter.get(i);
 
+
 			// Structure
 			coefs = {};
-			coefs = string.getCoefficients(i);
-			//coefs = drum.getCoefficients(i);
 
+			if (structA == nullptr)
+				continue;
+
+			const SvfCoefficients& structCoefsA = structA->getCoefficients(i);
+
+			if (structB != nullptr) {
+				const SvfCoefficients& structCoefsB = structB->getCoefficients(i);
+				mInterpSvfCoefs(structCrossfade, coefs, structCoefsA, structCoefsB);
+			}
+			else {
+				coefs = structCoefsA;
+			}
+			
 			// Filter bank
 			resonators[i].setCoefficients(coefs);
 			resonators[i].process(exciterOut);
@@ -187,8 +236,16 @@ struct Modal : Module
 
 		exciter.advanceWriteIdx();
 
-		output = output * string.getActiveModesScaler();
-		//output = output * drum.getActiveModesScaler();
+		// Output
+		float activeModesScaler = 0.f;
+
+		if (structA != nullptr) {
+			activeModesScaler = structA->getActiveModesScaler();
+
+			if (structB != nullptr)
+				activeModesScaler = mInterp(structCrossfade, activeModesScaler, structB->getActiveModesScaler());
+		}
+		output = output * activeModesScaler;
 
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
@@ -213,7 +270,7 @@ struct ModalModuleWidget : ModuleWidget
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 20.0f)), module, Modal::PITCH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 40.0f)), module, Modal::MORPH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 60.0f)), module, Modal::POSITION_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 80.0f)), module, Modal::ATTACK_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 80.0f)), module, Modal::STRUCTURE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 80.0f)), module, Modal::DECAY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));

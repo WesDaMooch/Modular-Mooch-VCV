@@ -7,9 +7,9 @@ static constexpr int DIAL_RESOLUTION = 512;
 
 
 struct SvfCoefficients {
-	float freq = 220.0f;
-	float q = 1.0f;
-	float amplitude = 1.0f;
+	float freq = 220.f;
+	float q = 1.f;
+	float amplitude = 0.f;
 };
 
 
@@ -44,3 +44,8 @@ inline T mInterp(T xFade, T value1, T value2) {
 	return (T(1) - xFade) * value1 + xFade * value2;
 }
 
+inline void mInterpSvfCoefs(float xfade, SvfCoefficients& output, const SvfCoefficients& coef1, const SvfCoefficients& coef2) {
+	output.freq			= mInterp(xfade, coef1.freq, coef2.freq);
+	output.q			= mInterp(xfade, coef1.q, coef2.q);
+	output.amplitude	= mInterp(xfade, coef1.amplitude, coef2.amplitude);
+}
