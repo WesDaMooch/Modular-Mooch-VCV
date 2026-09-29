@@ -11,8 +11,7 @@
 // Multiple layers of modes
 
 // TODO:
-// Exciter goes into spectal env -> an amount of pre gain to the exciter input to a mode 
-// Seperate 'timbre' (Q) and brightness knobs?
+// Exciter goes into spectal env -> an amount of pre gain to the exciter input to a mode. Not sure about this now
 
 // String
 // decay is exp (or modelled) q, decay param just controls base decay
@@ -28,11 +27,17 @@
 
 // Old (0s Mackie desk style clipping?
 
+// Velocity input
+
+// Punch
+// Pitch env, Amount and decay
+
 struct Modal : Module
 {
 	enum ParamId
 	{
 		TRIG_PARAM,
+		EXCITER_TYPE_PARAM,
 		PITCH_PARAM,
 		MORPH_PARAM,
 		POSITION_PARAM,
@@ -89,6 +94,7 @@ struct Modal : Module
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
 		configButton(TRIG_PARAM, "Trigger");
+		configParam(EXCITER_TYPE_PARAM, 0.f, 1.f, 0.f, "Exciter Type");
 		configParam(PITCH_PARAM, -54.0f, 54.0f, 0.0f, "Pitch", " Hz", dsp::FREQ_SEMITONE, dsp::FREQ_C4);
 		configParam(MORPH_PARAM, 0.0f, 1.0f, 0.5f, "Morph");
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
@@ -168,8 +174,12 @@ struct Modal : Module
 
 		bool gate = trig || trigSchmitt.isHigh();
 
+		float exciterType = params[EXCITER_TYPE_PARAM].getValue();
+
 		if (trigBoolean.process(gate)) {
+			// On trigger
 			exciterParams = {};
+			exciterParams.type = exciterType;
 			exciterParams.delayTime = params[DELAY_TIME_PARAM].getValue();
 			exciterParams.delayType = params[DELAY_TYPE_PARAM].getValue();
 
@@ -210,7 +220,6 @@ struct Modal : Module
 		{
 			float exciterOut = exciter.get(i);
 
-
 			// Structure
 			coefs = {};
 
@@ -249,7 +258,7 @@ struct Modal : Module
 
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
-		//outputs[AUDIO_OUTPUT].setVoltage(exciter.get(0).env);
+		//outputs[AUDIO_OUTPUT].setVoltage(exciter.get(0));
 	}		
 };
 
@@ -267,6 +276,7 @@ struct ModalModuleWidget : ModuleWidget
 		addChild(createWidget<ThemedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		// Parameters
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(10.0f, 20.0f)), module, Modal::TRIG_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 80.0f)), module, Modal::EXCITER_TYPE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 20.0f)), module, Modal::PITCH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 40.0f)), module, Modal::MORPH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 60.0f)), module, Modal::POSITION_PARAM));

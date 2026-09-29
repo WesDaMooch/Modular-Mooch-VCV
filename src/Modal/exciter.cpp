@@ -7,6 +7,48 @@ Exciter::Exciter() {
 
 
 void Exciter::buildLuts() {
+    // Exciter tables
+    float peak = 0.f;
+    
+    // Impulse table 
+    // TODO: Dont like the impulse, maybe replace with decaying impulse train?
+    //for (int i = 0; i < TABLE_LEN; i++)
+    //    ampTable[0][i] = (i == 0) ? 1.f : 0.f;
+
+
+    // Raised cosine pulse
+    const float T = TABLE_LEN / 8.f;
+    const float beta = 1.f;
+    const float zeroCrossingPoint = 3.f;   // Pick third zero-crossing from center
+
+    // Raised cosine pulse
+    for (int i = 0; i < TABLE_LEN; i++)
+    {
+        float t = -zeroCrossingPoint * T + ((zeroCrossingPoint * 2.f) * T * i) / (TABLE_LEN - 1);
+        ampTable[1][i] = raisedCosine(t, T, beta);
+        peak = std::max(peak, fabsf(ampTable[1][i]));
+    }
+
+    normaliseAmplitudeEnvelope(1, peak);
+
+
+    // Gaussian pulse
+    const float sigma = 33.3f;
+    const float centre = TABLE_LEN * 0.5f;
+
+    peak = 0.f;
+
+    for (int i = 0; i < TABLE_LEN; i++)
+    {
+        float x = (i - centre) / sigma;
+        ampTable[2][i] = std::expf(-0.5f * x * x);
+        peak = std::max(peak, std::fabsf(ampTable[1][i]));
+    }
+
+    normaliseAmplitudeEnvelope(2, peak);
+
+
+    // Delay tables
     static constexpr float delayExpCurve = 200.0f;
 
     for (int i = 0; i < MAX_MODES; i++) {
@@ -41,6 +83,12 @@ void Exciter::trigger(ExciterParams params) {
 	ampValue = 0.f;    
 	ampStage = ATTACK;
 
+    type = params.type;
+
+    // Start table playback
+    ampTablePhase = 0.f;
+    tableActive = true;
+
     // Delay
     delayTime = mClamp(params.delayTime, 0.f, 1.f);
     delayType = mClamp(params.delayType, 0.0f, 1.0f);
@@ -49,7 +97,74 @@ void Exciter::trigger(ExciterParams params) {
 
 
 void Exciter::update(float deltaTime) {
+    float excitation = 0.f;
+
+    if (tableActive)
+    {
+        type = mClamp(type, 0.f, 1.f);
+
+        float tablePosition = type * (NUM_TABLES - 1);
+
+        int typeA = static_cast<int>(std::floorf(tablePosition));
+        int typeB = static_cast<int>(std::ceilf(tablePosition));
+
+        float typeFrac = tablePosition - typeA;
+
+        int index0 = static_cast<int>(ampTablePhase);
+        int index1 = index0 + 1;
+
+        float frac = ampTablePhase - index0;
+
+        if (index1 < TABLE_LEN)
+        {
+            float sampleA = mInterp(frac, ampTable[typeA][index0], ampTable[typeA][index1]);
+            float sampleB = mInterp(frac, ampTable[typeB][index0], ampTable[typeB][index1]);
+
+            excitation = mInterp(typeFrac, sampleA, sampleB);
+            ampTablePhase += ampTableIncrement;
+        }
+        else
+        {
+            tableActive = false;
+            excitation = 0.f;
+        }
+    }
+
+    // Write into delay buffers
+    exciterDelayBuffer[writeIdx] = excitation;
+
+    // Read excitation wavetable
+    /*
+    if (tableActive)
+    {
+        int index = static_cast<int>(ampTablePhase);
+
+
+        int typeA = std::floor(type);
+        int typeB = std::ceil(type);
+
+        float typeCrossfade = type - static_cast<float>(typeA);
+
+        if (index < TABLE_LEN)
+        {
+            float excitationA = ampTable[typeA][index];
+            float excitationB = ampTable[typeB][index];
+
+            excitation = mInterp(typeCrossfade, excitationA, excitationB); //ampTable[currentTable][index];
+
+            ampTablePhase += ampTableIncrement;
+        }
+        else
+        {
+            // Table finished
+            tableActive = false;
+            excitation = 0.f;
+        }
+    }
+    */
+
     // Exciter amplitude envelope
+    /*
     switch (ampStage) {
 
     case IDLE:
@@ -86,9 +201,10 @@ void Exciter::update(float deltaTime) {
         }
         break;
     }
+    */
 
     // Write into delay buffers
-    exciterDelayBuffer[writeIdx] = ampValue;
+    //exciterDelayBuffer[writeIdx] = ampValue;
 }
 
 
@@ -106,7 +222,7 @@ float Exciter::get(int modeIdx) {
     while (readIdx < 0)
         readIdx += MAX_DELAY_SAMPLES;
     
-    return exciterDelayBuffer[readIdx] * spectralEnvLut[modeIdx];
+    return exciterDelayBuffer[readIdx];
 }
 
 void Exciter::advanceWriteIdx() {

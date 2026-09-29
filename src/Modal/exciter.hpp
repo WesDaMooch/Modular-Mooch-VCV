@@ -39,6 +39,21 @@ protected:
 		DECAY
 	};
 
+	// Exciter amplitude table
+	static constexpr int NUM_TABLES = 3;
+	static constexpr int TABLE_LEN = 128; //1024; // TODO: Find length in ms at 48kHz sr
+
+	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> ampTable = {};
+
+	int ampTableIndex = 0;
+	float ampTablePhase = 0.f;
+	float ampTableIncrement = 1.f;
+	
+	float type = 0.f;
+	int currentTable = 0;
+	bool tableActive = false;
+
+
 	// Amplitude envelope
 	Stage ampStage = IDLE;
 	float ampValue = 0.f;
@@ -68,6 +83,42 @@ protected:
 		return dist(rng);
 	}
 
+
+	inline void normaliseAmplitudeEnvelope(int tableIdx, float peak) {
+		tableIdx = mClamp(tableIdx, 0, (NUM_TABLES - 1));
+		if (peak > 0.f)
+		{
+			for (int i = 0; i < TABLE_LEN; i++)
+				ampTable[tableIdx][i] /= peak;
+		}
+	}
+	
+
+	// Raised cosine helpers
+	inline float sinc(float x)
+	{
+		if (std::fabsf(x) < 1e-6f)
+			return 1.0f;
+
+		return sinf(M_PI * x) / (M_PI * x);
+	}
+
+	inline float raisedCosine(float t, float T, float beta)
+	{
+		float x = t / T;
+
+		// Special case: t = ±T/(2*beta)
+		float denom = 1.0f - std::powf(2.0f * beta * x, 2.0f);
+
+		if (std::fabsf(denom) < 1e-6f)
+		{
+			return (M_PI / 4.0f) * sinc(1.0f / (2.0f * beta));
+		}
+
+		return sinc(x) * std::cosf(M_PI * beta * x) / denom;
+	}
+
+	// Delay
 	void buildRandomDelay();
 	float getDelay(int modeIdx);
 };
