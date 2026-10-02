@@ -53,6 +53,7 @@ struct Modal : Module
 		TIMBRE_PARAM,
 		DELAY_TIME_PARAM,
 		DELAY_TYPE_PARAM,
+		SOFT_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId
@@ -94,6 +95,9 @@ struct Modal : Module
 	Drum2 drum;
 	StructureParams sParams;
 
+	bool soft = false;
+	dsp::BooleanTrigger softBoolean;
+
 	Modal() : structures{ &string, &drum }
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
@@ -110,6 +114,8 @@ struct Modal : Module
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
 		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Delay Time");
 		configParam(DELAY_TYPE_PARAM, 0.0f, 1.0f, 0.0f, "Delay Type");
+		configButton(SOFT_PARAM, "Soft");
+		
 		// Inputs
 		configInput(TRIG_INPUT, "Trigger");
 		configInput(EXCITER_INPUT, "Exciter");
@@ -226,6 +232,10 @@ struct Modal : Module
 				structB->setParams(sParams);
 		}
 
+		// Solf button
+		if (softBoolean.process(params[SOFT_PARAM].getValue()))
+			soft ^= true;
+
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
 		{
@@ -253,15 +263,14 @@ struct Modal : Module
 
 			float modeOut = resonators[i].bandpass();
 
-			// Really cool
-			// TODO: make a switch button for this
 			// Odd polarity flip
-			if (i % 2 != 0)
-				modeOut *= -1;
+			if (soft) {
+				// TODO: optimize %
+				if (i % 2 != 0)
+					modeOut *= -1;
+			}
 
 			output += modeOut;
-
-			//output += resonators[i].bandpass();
 		}
 
 		exciter.advanceWriteIdx();
@@ -310,6 +319,8 @@ struct ModalModuleWidget : ModuleWidget
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 80.0f)), module, Modal::STRUCTURE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 40.0f)), module, Modal::DELAY_TYPE_PARAM));
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(30.0f, 60.0f)), module, Modal::SOFT_PARAM));
+
 
 		// Inputs
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.0f, 40.0f)), module, Modal::TRIG_INPUT));
