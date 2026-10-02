@@ -8,6 +8,7 @@ Exciter::Exciter() {
 
 void Exciter::buildLuts() {
     // Exciter tables
+    size_t tableIdx = 0;
     float peak = 0.f;
     
     // Impulse table 
@@ -15,37 +16,97 @@ void Exciter::buildLuts() {
     //for (int i = 0; i < TABLE_LEN; i++)
     //    ampTable[0][i] = (i == 0) ? 1.f : 0.f;
 
+    
+    // Turkey, do kinda like could be used...
+    tableIdx = 0;
+    peak = 0.f;
 
-    // Raised cosine pulse
-    const float T = TABLE_LEN / 8.f;
-    const float beta = 1.f;
-    const float zeroCrossingPoint = 3.f;   // Pick third zero-crossing from center
+    const float alpha = 0.1f; // 0 = rectangular, 1 = Hann
 
-    // Raised cosine pulse
     for (int i = 0; i < TABLE_LEN; i++)
     {
-        float t = -zeroCrossingPoint * T + ((zeroCrossingPoint * 2.f) * T * i) / (TABLE_LEN - 1);
-        ampTable[1][i] = raisedCosine(t, T, beta);
-        peak = std::max(peak, fabsf(ampTable[1][i]));
+        float x = static_cast<float>(i) / (TABLE_LEN - 1);
+
+        float window = 0.0f;
+
+        if (x < alpha * 0.5f)
+        {
+            // Rising cosine taper
+            window = 0.5f * (1.f + cosf(M_PI * (2.f * x / alpha - 1.f)));
+        }
+        else if (x <= 1.0f - alpha * 0.5f)
+        {
+            // Flat section
+            window = 1.0f;
+        }
+        else
+        {
+            // Falling cosine taper
+            window = 0.5f * (1.0f + cosf(M_PI * (2.0f * x / alpha - 2.0f / alpha + 1.0f)));
+        }
+
+        shapeTable[tableIdx][i] = window;
+
+        peak = std::max(peak, fabsf(shapeTable[0][i]));
+    }
+    normaliseAmplitudeEnvelope(tableIdx, peak);
+
+
+    // Raise cosine pulse
+    tableIdx++;
+    peak = 0.f;
+
+    const float T = TABLE_LEN / 8.f;
+    const float beta = 0.5f;
+    const float leftZeroCrossing = 2.f;    // Start point
+    const float rightZeroCrossing = 5.f;   // End point
+
+    for (int i = 0; i < TABLE_LEN; i++)
+    {
+        // Asymmetric time range
+        float t = -leftZeroCrossing * T + (leftZeroCrossing + rightZeroCrossing) * T * static_cast<float>(i) / (TABLE_LEN - 1);
+
+        float x = t / T;
+
+        float denominator = 1.f - std::powf(2.f * beta * x, 2.f);
+
+        float value = 0.f;
+
+        if (std::fabsf(denominator) > 1e-12f)
+        {
+            float sinc = 1.f;
+
+            if (std::fabsf(x) > 1e-12f)
+                sinc = std::sinf(M_PI * x) / (M_PI * x);
+
+            value = sinc * std::cosf(M_PI * beta * x) / denominator;
+        }
+        else
+        {
+            value = (M_PI * 0.25f) * (std::sinf(M_PI / (2.f * beta)) / (M_PI / (2.f * beta)));
+        }
+
+        shapeTable[tableIdx][i] = value;
+
+        peak = std::max(peak, fabsf(value));
     }
 
-    normaliseAmplitudeEnvelope(1, peak);
+    normaliseAmplitudeEnvelope(tableIdx, peak);
 
 
-    // Gaussian pulse
-    const float sigma = 33.3f;
-    const float centre = TABLE_LEN * 0.5f;
-
+    // Hann pulse
+    tableIdx++;
     peak = 0.f;
 
     for (int i = 0; i < TABLE_LEN; i++)
     {
-        float x = (i - centre) / sigma;
-        ampTable[2][i] = std::expf(-0.5f * x * x);
-        peak = std::max(peak, std::fabsf(ampTable[1][i]));
+        float hann = 0.5f * (1.f - std::cosf(2.f * M_PI * i / (TABLE_LEN - 1)));
+        shapeTable[tableIdx][i] = hann;
+        peak = std::max(peak, std::fabsf(shapeTable[tableIdx][i]));
     }
 
-    normaliseAmplitudeEnvelope(2, peak);
+    normaliseAmplitudeEnvelope(tableIdx, peak);
+
 
 
     // Delay tables
@@ -55,10 +116,7 @@ void Exciter::buildLuts() {
         float x = static_cast<float>(i) / (MAX_MODES - 1);
         float reverseX = (x - 1.0f) * -1.0f;
 
-        // Specral Env
-        spectralEnvLut[i] = 1.f;  //reverseX;
-
-        // Delay //
+        // Delay 
         // Type 0 - Decreasing exponential
         delayTypeLuts[0][i] = (std::pow(delayExpCurve, x) - 1.f) / (delayExpCurve - 1.f);
         
@@ -77,13 +135,12 @@ void Exciter::buildLuts() {
 }
 
 void Exciter::trigger(ExciterParams params) {
-    // Amplitude envelope
-    ampAttack = 0.0002f; //0.005f;
-    ampDecay = 0.002f;//0.005f;
-	ampValue = 0.f;    
-	ampStage = ATTACK;
+    velocityParam = params.velocity;
+    shapeParam =    params.shape;
+    noiseParam =    params.noise;
 
-    type = params.type;
+    //ampTableIncrement = mMap(params.noise, 64.f, 0.1f); //64, 4
+    ampTableIncrement = 8.f;
 
     // Start table playback
     ampTablePhase = 0.f;
@@ -99,11 +156,12 @@ void Exciter::trigger(ExciterParams params) {
 void Exciter::update(float deltaTime) {
     float excitation = 0.f;
 
+    // Read shape table
     if (tableActive)
     {
-        type = mClamp(type, 0.f, 1.f);
+        shapeParam = mClamp(shapeParam, 0.f, 1.f);
 
-        float tablePosition = type * (NUM_TABLES - 1);
+        float tablePosition = shapeParam * (NUM_TABLES - 1);
 
         int typeA = static_cast<int>(std::floorf(tablePosition));
         int typeB = static_cast<int>(std::ceilf(tablePosition));
@@ -117,8 +175,8 @@ void Exciter::update(float deltaTime) {
 
         if (index1 < TABLE_LEN)
         {
-            float sampleA = mInterp(frac, ampTable[typeA][index0], ampTable[typeA][index1]);
-            float sampleB = mInterp(frac, ampTable[typeB][index0], ampTable[typeB][index1]);
+            float sampleA = mInterp(frac, shapeTable[typeA][index0], shapeTable[typeA][index1]);
+            float sampleB = mInterp(frac, shapeTable[typeB][index0], shapeTable[typeB][index1]);
 
             excitation = mInterp(typeFrac, sampleA, sampleB);
             ampTablePhase += ampTableIncrement;
@@ -130,86 +188,20 @@ void Exciter::update(float deltaTime) {
         }
     }
 
+    // Apply noise
+    // TODO: Just have a noisy turkey window shape, nah lets go with some granular idea
+    //float noise = rack::random::uniform() * 2.0f - 1.0f;
+    //excitation += excitation * noise; //* 0.7f; // noiseParam;
+
+    excitation *= velocityParam;
+
     // Write into delay buffers
     exciterDelayBuffer[writeIdx] = excitation;
-
-    // Read excitation wavetable
-    /*
-    if (tableActive)
-    {
-        int index = static_cast<int>(ampTablePhase);
-
-
-        int typeA = std::floor(type);
-        int typeB = std::ceil(type);
-
-        float typeCrossfade = type - static_cast<float>(typeA);
-
-        if (index < TABLE_LEN)
-        {
-            float excitationA = ampTable[typeA][index];
-            float excitationB = ampTable[typeB][index];
-
-            excitation = mInterp(typeCrossfade, excitationA, excitationB); //ampTable[currentTable][index];
-
-            ampTablePhase += ampTableIncrement;
-        }
-        else
-        {
-            // Table finished
-            tableActive = false;
-            excitation = 0.f;
-        }
-    }
-    */
-
-    // Exciter amplitude envelope
-    /*
-    switch (ampStage) {
-
-    case IDLE:
-        ampValue = 0.0f;
-        break;
-
-    case ATTACK:
-        if (ampAttack <= 0.0f) {
-            ampValue = 1.0f;
-            ampStage = DECAY;
-        }
-        else {
-            ampValue += deltaTime / ampAttack;
-
-            if (ampValue >= 1.0f) {
-                ampValue = 1.0f;
-                ampStage = DECAY;
-            }
-        }
-        break;
-
-    case DECAY:
-        if (ampDecay <= 0.0f) {
-            ampValue = 0.0f;
-            ampStage = IDLE;
-        }
-        else {
-            ampValue -= deltaTime / ampDecay;
-
-            if (ampValue <= 0.0f) {
-                ampValue = 0.0f;
-                ampStage = IDLE;
-            }
-        }
-        break;
-    }
-    */
-
-    // Write into delay buffers
-    //exciterDelayBuffer[writeIdx] = ampValue;
 }
 
 
 void Exciter::reset() {
-	ampValue = 0.f;
+
 }
 
 float Exciter::get(int modeIdx) {

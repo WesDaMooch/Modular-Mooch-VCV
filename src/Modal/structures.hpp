@@ -63,6 +63,7 @@ protected:
 
 	float fundamentalFreq = 220.f;
 	float inharmonicity = 0.f;
+	float detune = 0.f;
 	float position = 0.0001f;
 	float baseDecay = 0.5f;
 

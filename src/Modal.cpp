@@ -10,6 +10,9 @@
 // Ideas
 // Multiple layers of modes
 
+// Randomness (see max msp book) on the amplitudes and q of modes
+// Soft clip std::tanh for now
+
 // TODO:
 // Exciter goes into spectal env -> an amount of pre gain to the exciter input to a mode. Not sure about this now
 
@@ -32,12 +35,16 @@
 // Punch
 // Pitch env, Amount and decay
 
+// Per harmonic soft clipping?
+
 struct Modal : Module
 {
 	enum ParamId
 	{
 		TRIG_PARAM,
-		EXCITER_TYPE_PARAM,
+		EXCITER_SHAPE_PARAM,
+		EXCITER_NOISE_PARAM,
+		VELOCITY_PARAM,
 		PITCH_PARAM,
 		MORPH_PARAM,
 		POSITION_PARAM,
@@ -52,6 +59,7 @@ struct Modal : Module
 	{
 		TRIG_INPUT,
 		EXCITER_INPUT,
+		VELOCITY_INPUT,
 		PITCH_INPUT,
 		MORPH_INPUT,
 		POSITION_INPUT,
@@ -75,15 +83,12 @@ struct Modal : Module
 	dsp::BooleanTrigger trigBoolean;
 	dsp::SchmittTrigger trigSchmitt;
 
-	//SvfCoefficients structCoefsA;
-	//SvfCoefficients structCoefsB;
 	SvfCoefficients coefs;
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
 	Exciter exciter;
 	ExciterParams exciterParams;
 
-	//int structIdx = 1;
 	std::array<StructureBase*, NUM_STRUCTURES> structures = {};
 	String string;
 	Drum2 drum;
@@ -94,7 +99,9 @@ struct Modal : Module
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
 		configButton(TRIG_PARAM, "Trigger");
-		configParam(EXCITER_TYPE_PARAM, 0.f, 1.f, 0.f, "Exciter Type");
+		configParam(EXCITER_SHAPE_PARAM, 0.f, 1.f, 0.f, "Exciter Shape");
+		configParam(EXCITER_NOISE_PARAM, 0.f, 1.f, 0.f, "Exciter Noise");
+		configParam(VELOCITY_PARAM, 0.f, 2.f, 1.f, "Velocity");
 		configParam(PITCH_PARAM, -54.0f, 54.0f, 0.0f, "Pitch", " Hz", dsp::FREQ_SEMITONE, dsp::FREQ_C4);
 		configParam(MORPH_PARAM, 0.0f, 1.0f, 0.5f, "Morph");
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
@@ -106,6 +113,7 @@ struct Modal : Module
 		// Inputs
 		configInput(TRIG_INPUT, "Trigger");
 		configInput(EXCITER_INPUT, "Exciter");
+		configInput(VELOCITY_INPUT, "Velocity");
 		configInput(PITCH_INPUT, "1V/octave pitch");
 		configInput(MORPH_INPUT, "Morph CV");
 		configInput(POSITION_INPUT, "Position CV");
@@ -165,7 +173,6 @@ struct Modal : Module
 
 		float structCrossfade = structParam - static_cast<float>(structAIdx);
 
-
 		// Trigger button
 		bool trig = params[TRIG_PARAM].getValue() > 0.f;
 
@@ -174,12 +181,16 @@ struct Modal : Module
 
 		bool gate = trig || trigSchmitt.isHigh();
 
-		float exciterType = params[EXCITER_TYPE_PARAM].getValue();
-
 		if (trigBoolean.process(gate)) {
 			// On trigger
 			exciterParams = {};
-			exciterParams.type = exciterType;
+
+			bool velocityCvConnected = inputs[VELOCITY_INPUT].isConnected();
+			float velocityCv = velocityCvConnected ? inputs[VELOCITY_INPUT].getVoltage() * 0.2f : 1.f;
+			velocityCv = mClamp(velocityCv, 0.f, 2.f);
+			exciterParams.velocity = velocityCv * params[VELOCITY_PARAM].getValue();
+			exciterParams.shape = params[EXCITER_SHAPE_PARAM].getValue();
+			exciterParams.noise = params[EXCITER_NOISE_PARAM].getValue();
 			exciterParams.delayTime = params[DELAY_TIME_PARAM].getValue();
 			exciterParams.delayType = params[DELAY_TYPE_PARAM].getValue();
 
@@ -240,12 +251,23 @@ struct Modal : Module
 			resonators[i].setCoefficients(coefs);
 			resonators[i].process(exciterOut);
 
-			output += resonators[i].bandpass();
+			float modeOut = resonators[i].bandpass();
+
+			// Really cool
+			// TODO: make a switch button for this
+			// Odd polarity flip
+			if (i % 2 != 0)
+				modeOut *= -1;
+
+			output += modeOut;
+
+			//output += resonators[i].bandpass();
 		}
 
 		exciter.advanceWriteIdx();
 
 		// Output
+		/*
 		float activeModesScaler = 0.f;
 
 		if (structA != nullptr) {
@@ -255,7 +277,8 @@ struct Modal : Module
 				activeModesScaler = mInterp(structCrossfade, activeModesScaler, structB->getActiveModesScaler());
 		}
 		output = output * activeModesScaler;
-
+		*/
+		output *= 0.0625; // 1/16
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
 		//outputs[AUDIO_OUTPUT].setVoltage(exciter.get(0));
@@ -276,24 +299,27 @@ struct ModalModuleWidget : ModuleWidget
 		addChild(createWidget<ThemedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		// Parameters
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(10.0f, 20.0f)), module, Modal::TRIG_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 80.0f)), module, Modal::EXCITER_TYPE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 20.0f)), module, Modal::PITCH_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 40.0f)), module, Modal::MORPH_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 60.0f)), module, Modal::POSITION_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 80.0f)), module, Modal::STRUCTURE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 80.0f)), module, Modal::DECAY_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(40.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 40.0f)), module, Modal::DELAY_TYPE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 80.0f)), module, Modal::EXCITER_SHAPE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 100.0f)), module, Modal::EXCITER_NOISE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.0f, 40.0f)), module, Modal::VELOCITY_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 20.0f)), module, Modal::PITCH_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 40.0f)), module, Modal::MORPH_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 60.0f)), module, Modal::POSITION_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 80.0f)), module, Modal::DECAY_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 80.0f)), module, Modal::STRUCTURE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 40.0f)), module, Modal::DELAY_TYPE_PARAM));
 
 		// Inputs
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.0f, 40.0f)), module, Modal::TRIG_INPUT));
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(10.0f, 60.0f)), module, Modal::EXCITER_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 20.0f)), module, Modal::PITCH_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 40.0f)), module, Modal::MORPH_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 60.0f)), module, Modal::POSITION_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 80.0f)), module, Modal::DECAY_INPUT));
-		addInput(createInputCentered<BananutBlack>(mm2px(Vec(25.0f, 100.0f)), module, Modal::TIMBRE_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(30.0f, 20.0f)), module, Modal::VELOCITY_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(40.0f, 20.0f)), module, Modal::PITCH_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(40.0f, 40.0f)), module, Modal::MORPH_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(40.0f, 60.0f)), module, Modal::POSITION_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(40.0f, 80.0f)), module, Modal::DECAY_INPUT));
+		addInput(createInputCentered<BananutBlack>(mm2px(Vec(40.0f, 100.0f)), module, Modal::TIMBRE_INPUT));
 		// Ouputs
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(80.f, 100.f)), module, Modal::AUDIO_OUTPUT));
 	}

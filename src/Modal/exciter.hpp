@@ -2,16 +2,15 @@
 #include <array>
 #include <cmath>
 #include <random>
+#include <rack.hpp>
 #include "common.hpp"
 
 
 struct ExciterParams
 {
-	// Amp env
-	float type = 0.f;
-	
-	// Amp spectal env
-	float spectralEnv = 0.f;
+	float velocity = 0.f;
+	float shape = 0.f;	
+	float noise = 0.f;
 
 	//Delay
 	float delayTime = 0.f;
@@ -33,35 +32,25 @@ public:
 protected:
 	void buildLuts();
 
-	enum Stage {
-		IDLE,
-		ATTACK,
-		DECAY
-	};
-
-	// Exciter amplitude table
+	// Exciter shape table
 	static constexpr int NUM_TABLES = 3;
-	static constexpr int TABLE_LEN = 128; //1024; // TODO: Find length in ms at 48kHz sr
+	static constexpr int TABLE_LEN = 1024; //1024; // TODO: Find length in ms at 48kHz sr
 
-	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> ampTable = {};
+	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> shapeTable = {};
 
 	int ampTableIndex = 0;
 	float ampTablePhase = 0.f;
-	float ampTableIncrement = 1.f;
+	float ampTableIncrement = 8.f;
 	
-	float type = 0.f;
+	float shapeParam = 0.f;
 	int currentTable = 0;
 	bool tableActive = false;
 
+	// Velocity
+	float velocityParam = 0.f;
 
-	// Amplitude envelope
-	Stage ampStage = IDLE;
-	float ampValue = 0.f;
-	float ampAttack = 0.f;
-	float ampDecay = 0.f;
-
-	// Spectral envelope
-	std::array<float, MAX_MODES> spectralEnvLut = {};
+	// Noise
+	float noiseParam = 0.f;
 
 	// Delay
 	static constexpr int MAX_DELAY_SAMPLES = 144000; // 3 seconds ish
@@ -76,6 +65,7 @@ protected:
 	static constexpr int NUM_DELAY_TYPES = 5;
 	std::array<std::array<float, MAX_MODES>, NUM_DELAY_TYPES> delayTypeLuts = {};
 
+	// TODO: replace with rack random or just remove all together
 	std::mt19937 rng{ std::random_device{}() };
 
 	inline float randomValue() {
@@ -89,7 +79,7 @@ protected:
 		if (peak > 0.f)
 		{
 			for (int i = 0; i < TABLE_LEN; i++)
-				ampTable[tableIdx][i] /= peak;
+				shapeTable[tableIdx][i] /= peak;
 		}
 	}
 	

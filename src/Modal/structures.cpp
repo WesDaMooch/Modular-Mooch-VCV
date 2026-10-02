@@ -17,6 +17,7 @@ void String::setParams(const StructureParams& newParams) {
 	
 	fundamentalFreq = mClamp(newParams.fundamentalFreq, minFreq, maxFreq);
 	inharmonicity = mMap(newParams.morph, -0.999f, 0.999f);
+	detune = mMap(newParams.morph, -1.f, 1.f);
 	position = mMap(newParams.position, 0.0001f, 0.9999f);
 	baseDecay = mMap(newParams.decay, 0.5f, 250.0f);
 	amplitudeDialIdx = static_cast<int>(mMap(newParams.timbre, 0.f, (float)(DIAL_RESOLUTION - 1)));
@@ -29,11 +30,23 @@ void String::setParams(const StructureParams& newParams) {
 void String::update() {
 	activeModes = 0;
 
-	for (size_t idx = 0; idx < MAX_MODES; idx++) {
+
+	const float maxDetune = 5.f; // Hz
+	for (int idx = 0; idx < MAX_MODES; idx++) {
 		int n = idx + 1;
 
 		// Pitch
-		float f = fundamentalFreq * std::pow(static_cast<float>(n), 1.f + inharmonicity);
+		//float f = fundamentalFreq * std::pow(static_cast<float>(n), 1.f + inharmonicity);
+		
+		float activeDetune = detune * maxDetune * idx;
+
+		if (n % 2  != 0) {
+			// Odd
+			activeDetune *= -1;
+		}
+
+		float f = fundamentalFreq * n + activeDetune;
+
 		coefs[idx].freq = f;
 
 		if (f < minFreq || f > maxFreq) {
