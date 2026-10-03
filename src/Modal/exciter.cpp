@@ -1,22 +1,25 @@
 #include "exciter.hpp"
 
 
-Exciter::Exciter() {
-    buildLuts();
+
+
+// Granulator
+
+Granulator::Granulator() {
+    buildTables();
 }
 
-
-void Exciter::buildLuts() {
+void Granulator::buildTables() {
     // Exciter tables
     size_t tableIdx = 0;
     float peak = 0.f;
-    
+
     // Impulse table 
     // TODO: Dont like the impulse, maybe replace with decaying impulse train?
     //for (int i = 0; i < TABLE_LEN; i++)
     //    ampTable[0][i] = (i == 0) ? 1.f : 0.f;
 
-    
+
     // Turkey, do kinda like could be used...
     tableIdx = 0;
     peak = 0.f;
@@ -45,9 +48,9 @@ void Exciter::buildLuts() {
             window = 0.5f * (1.0f + cosf(M_PI * (2.0f * x / alpha - 2.0f / alpha + 1.0f)));
         }
 
-        shapeTable[tableIdx][i] = window;
+        table[tableIdx][i] = window;
 
-        peak = std::max(peak, fabsf(shapeTable[0][i]));
+        peak = std::max(peak, fabsf(table[0][i]));
     }
     normaliseAmplitudeEnvelope(tableIdx, peak);
 
@@ -86,7 +89,7 @@ void Exciter::buildLuts() {
             value = (M_PI * 0.25f) * (std::sinf(M_PI / (2.f * beta)) / (M_PI / (2.f * beta)));
         }
 
-        shapeTable[tableIdx][i] = value;
+        table[tableIdx][i] = value;
 
         peak = std::max(peak, fabsf(value));
     }
@@ -101,14 +104,119 @@ void Exciter::buildLuts() {
     for (int i = 0; i < TABLE_LEN; i++)
     {
         float hann = 0.5f * (1.f - std::cosf(2.f * M_PI * i / (TABLE_LEN - 1)));
-        shapeTable[tableIdx][i] = hann;
-        peak = std::max(peak, std::fabsf(shapeTable[tableIdx][i]));
+        table[tableIdx][i] = hann;
+        peak = std::max(peak, std::fabsf(table[tableIdx][i]));
     }
 
     normaliseAmplitudeEnvelope(tableIdx, peak);
+}
 
 
+void Granulator::trigger(GranulatorTriggerParams& p) {
+    // Temp stuff just to get one grain to play
+    //tablePhase[0] = 0.f;
+    //tableActive[0] = true;
 
+    // Some ramp 1 to 0 (can att attach decay later) that decides whether a grain should be played
+    // At 1 - play a grain (but dont play all grains)
+    // 0 dont play a grain
+
+    shapeParam = p.shape;
+
+    spawnProbability = 1.f;
+    float spawnProbabiltyTime = 2.f; // s
+
+    spawnProbabilityDecay = 1.f / (spawnProbabiltyTime * sr);
+    spawnPhase = 0.f;
+
+    // Immediately launch first grain
+    spawnGrain();
+}
+
+void Granulator::spawnGrain()
+{
+    const float shapeVarianceAmount = 0.f; // 10%
+
+    for (int channel = 0; channel < MAX_CHANNELS; channel++)
+    {
+        if (!tableActive[channel])
+        {
+            // Set grain parameters
+            float shapeVariance = (rack::random::uniform() * 2.f - 1.f) * shapeVarianceAmount;
+            shape = mClamp(shapeParam + shapeVariance, 0.f, 1.f);
+                
+            tablePhase[channel] = 0.f;
+            tableActive[channel] = true;
+            return;
+        }
+    }
+}
+
+float Granulator::process() {
+    float output = 0.f;
+
+    // Update spawn envelope
+    spawnProbability -= spawnProbabilityDecay;
+
+    if (spawnProbability < 0.f)
+        spawnProbability = 0.f;
+
+    // Spawn grains
+    spawnPhase += spawnRate / sr;
+
+    if (spawnPhase >= 1.f)
+    {
+        spawnPhase -= 1.f;
+
+        float probability = spawnProbability * density;
+
+        if (rack::random::uniform() < probability)
+            spawnGrain();
+    }
+
+    // Process active grains
+    for (int channel = 0; channel < MAX_CHANNELS; channel++)
+    {
+        if (!tableActive[channel])
+            continue;
+
+        float tablePosition = shape * (NUM_TABLES - 1);
+
+        int typeA = static_cast<int>(std::floorf(tablePosition));
+        int typeB = static_cast<int>(std::ceilf(tablePosition));
+
+        float typeFrac = tablePosition - typeA;
+
+        int index0 = static_cast<int>(tablePhase[channel]);
+        int index1 = index0 + 1;
+
+        float frac = tablePhase[channel] - index0;
+
+        if (index1 < TABLE_LEN)
+        {
+            float sampleA = mInterp(frac, table[typeA][index0], table[typeA][index1]);
+            float sampleB = mInterp(frac, table[typeB][index0], table[typeB][index1]);
+            float grain = mInterp(typeFrac, sampleA, sampleB);
+            output += grain;
+
+            tablePhase[channel] += tablePlaySpeed;
+        }
+        else
+        {
+            tableActive[channel] = false;
+        }
+    }
+
+    return output;
+}
+
+
+// Exciter
+Exciter::Exciter() {
+    buildLuts();
+}
+
+void Exciter::buildLuts() {
     // Delay tables
     static constexpr float delayExpCurve = 200.0f;
 
@@ -134,69 +242,28 @@ void Exciter::buildLuts() {
     buildRandomDelay();
 }
 
-void Exciter::trigger(ExciterParams params) {
-    velocityParam = params.velocity;
-    shapeParam =    params.shape;
-    noiseParam =    params.noise;
+void Exciter::trigger(ExciterTriggerParams& p) {
+    velocityParam = p.velocity;
+    noiseParam =    p.noise;
 
-    //ampTableIncrement = mMap(params.noise, 64.f, 0.1f); //64, 4
-    ampTableIncrement = 8.f;
-
-    // Start table playback
-    ampTablePhase = 0.f;
-    tableActive = true;
+    granulator.trigger(p.g);
 
     // Delay
-    delayTime = mClamp(params.delayTime, 0.f, 1.f);
-    delayType = mClamp(params.delayType, 0.0f, 1.0f);
+    delayTime = mClamp(p.delayTime, 0.f, 1.f);
+    delayType = mClamp(p.delayType, 0.0f, 1.0f);
     buildRandomDelay();
 }
 
-
 void Exciter::update(float deltaTime) {
-    float excitation = 0.f;
-
-    // Read shape table
-    if (tableActive)
-    {
-        shapeParam = mClamp(shapeParam, 0.f, 1.f);
-
-        float tablePosition = shapeParam * (NUM_TABLES - 1);
-
-        int typeA = static_cast<int>(std::floorf(tablePosition));
-        int typeB = static_cast<int>(std::ceilf(tablePosition));
-
-        float typeFrac = tablePosition - typeA;
-
-        int index0 = static_cast<int>(ampTablePhase);
-        int index1 = index0 + 1;
-
-        float frac = ampTablePhase - index0;
-
-        if (index1 < TABLE_LEN)
-        {
-            float sampleA = mInterp(frac, shapeTable[typeA][index0], shapeTable[typeA][index1]);
-            float sampleB = mInterp(frac, shapeTable[typeB][index0], shapeTable[typeB][index1]);
-
-            excitation = mInterp(typeFrac, sampleA, sampleB);
-            ampTablePhase += ampTableIncrement;
-        }
-        else
-        {
-            tableActive = false;
-            excitation = 0.f;
-        }
-    }
-
     // Apply noise
     // TODO: Just have a noisy turkey window shape, nah lets go with some granular idea
     //float noise = rack::random::uniform() * 2.0f - 1.0f;
     //excitation += excitation * noise; //* 0.7f; // noiseParam;
 
-    excitation *= velocityParam;
-
     // Write into delay buffers
-    exciterDelayBuffer[writeIdx] = excitation;
+    exciterDelayBuffer[writeIdx] = granulator.process() * velocityParam;
+    // TODO: velocity lp filter
+
 }
 
 
@@ -256,3 +323,6 @@ float Exciter::getDelay(int modeIdx) {
 
     return 0.0f;
 }
+
+
+

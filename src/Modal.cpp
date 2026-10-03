@@ -11,14 +11,12 @@
 // Multiple layers of modes
 
 // Randomness (see max msp book) on the amplitudes and q of modes
-// Soft clip std::tanh for now
 
 // TODO:
 // Exciter goes into spectal env -> an amount of pre gain to the exciter input to a mode. Not sure about this now
 
 // String
 // decay is exp (or modelled) q, decay param just controls base decay
-// Timbre controls amp, not q
 
 // Body resonitors
 // https://ccrma.stanford.edu/~jos/jnmr/Body_Resonators.html
@@ -28,14 +26,15 @@
 
 // Piano hammer model https://ccrma.stanford.edu/~jos/jnmr/Pianos.html
 
+// Soft clip std::tanh for now
 // Old (0s Mackie desk style clipping?
-
-// Velocity input
+// Per harmonic soft clipping?
 
 // Punch
 // Pitch env, Amount and decay
 
-// Per harmonic soft clipping?
+// Optimize SVF or uses biquads
+// use normalize q input 0
 
 struct Modal : Module
 {
@@ -88,7 +87,7 @@ struct Modal : Module
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
 	Exciter exciter;
-	ExciterParams exciterParams;
+	ExciterTriggerParams exciterParams;
 
 	std::array<StructureBase*, NUM_STRUCTURES> structures = {};
 	String string;
@@ -191,11 +190,12 @@ struct Modal : Module
 			// On trigger
 			exciterParams = {};
 
+			exciterParams.g.shape = params[EXCITER_SHAPE_PARAM].getValue();
+
 			bool velocityCvConnected = inputs[VELOCITY_INPUT].isConnected();
 			float velocityCv = velocityCvConnected ? inputs[VELOCITY_INPUT].getVoltage() * 0.2f : 1.f;
 			velocityCv = mClamp(velocityCv, 0.f, 2.f);
 			exciterParams.velocity = velocityCv * params[VELOCITY_PARAM].getValue();
-			exciterParams.shape = params[EXCITER_SHAPE_PARAM].getValue();
 			exciterParams.noise = params[EXCITER_NOISE_PARAM].getValue();
 			exciterParams.delayTime = params[DELAY_TIME_PARAM].getValue();
 			exciterParams.delayType = params[DELAY_TYPE_PARAM].getValue();
@@ -288,6 +288,7 @@ struct Modal : Module
 		output = output * activeModesScaler;
 		*/
 		output *= 0.0625; // 1/16
+		output = std::tanh(output); // easy soft clipping
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
 		//outputs[AUDIO_OUTPUT].setVoltage(exciter.get(0));

@@ -6,10 +6,16 @@
 #include "common.hpp"
 
 
-struct ExciterParams
+struct GranulatorTriggerParams
 {
+	float shape = 0.f;
+};
+
+struct ExciterTriggerParams
+{
+	GranulatorTriggerParams g;
+
 	float velocity = 0.f;
-	float shape = 0.f;	
 	float noise = 0.f;
 
 	//Delay
@@ -18,12 +24,77 @@ struct ExciterParams
 };
 
 
+struct Granulator
+{
+	Granulator();
+	void buildTables();
+	// void setSamplerate(int newSamplerate);
+	void trigger(GranulatorTriggerParams& p);
+	void spawnGrain();
+	float process();
+
+	int sr = 48000; 
+
+	static constexpr int MAX_CHANNELS = 4;
+	static constexpr int NUM_TABLES = 3;
+	static constexpr int TABLE_LEN = 1024;
+
+	int channels = 1; // not used... yet?
+
+	float density = 1.f;
+	float spawnProbability = 0.f;
+	float spawnProbabilityDecay = 0.f;
+
+	float spawnPhase = 0.f;
+	float spawnRate = 100.f;
+
+	float shapeParam = 0.f;
+	float shape = 0.f;
+
+	float tablePlaySpeed = 8.f; // TODO: each grain could have a different speed
+
+	std::array<bool, MAX_CHANNELS> tableActive = {};
+	std::array<size_t, MAX_CHANNELS> currentTableIdx = {};
+	std::array<float, MAX_CHANNELS> tablePhase = {};
+
+	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> table = {};
+
+	inline void normaliseAmplitudeEnvelope(int tableIdx, float peak) {
+		tableIdx = mClamp(tableIdx, 0, (NUM_TABLES - 1));
+		if (peak > 0.f)
+		{
+			for (int i = 0; i < TABLE_LEN; i++)
+				table[tableIdx][i] /= peak;
+		}
+	}
+	// Raised cosine helpers
+	inline float sinc(float x)
+	{
+		if (std::fabsf(x) < 1e-6f)
+			return 1.f;
+
+		return std::sinf(M_PI * x) / (M_PI * x);
+	}
+
+	inline float raisedCosine(float t, float T, float beta)
+	{
+		float x = t / T;
+		float denom = 1.0f - std::powf(2.f * beta * x, 2.f);
+
+		if (std::fabsf(denom) < 1e-6f)
+			return (M_PI / 4.f) * sinc(1.f / (2.f * beta));
+		
+		return sinc(x) * std::cosf(M_PI * beta * x) / denom;
+	}
+};
+
+
 class Exciter
 {
 public:
 	Exciter();
 
-	void trigger(ExciterParams params);
+	void trigger(ExciterTriggerParams& p);
 	void update(float deltaTime);
 	void advanceWriteIdx();
 	void reset();
@@ -32,19 +103,7 @@ public:
 protected:
 	void buildLuts();
 
-	// Exciter shape table
-	static constexpr int NUM_TABLES = 3;
-	static constexpr int TABLE_LEN = 1024; //1024; // TODO: Find length in ms at 48kHz sr
-
-	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> shapeTable = {};
-
-	int ampTableIndex = 0;
-	float ampTablePhase = 0.f;
-	float ampTableIncrement = 8.f;
-	
-	float shapeParam = 0.f;
-	int currentTable = 0;
-	bool tableActive = false;
+	Granulator granulator;
 
 	// Velocity
 	float velocityParam = 0.f;
@@ -73,42 +132,10 @@ protected:
 		return dist(rng);
 	}
 
-
-	inline void normaliseAmplitudeEnvelope(int tableIdx, float peak) {
-		tableIdx = mClamp(tableIdx, 0, (NUM_TABLES - 1));
-		if (peak > 0.f)
-		{
-			for (int i = 0; i < TABLE_LEN; i++)
-				shapeTable[tableIdx][i] /= peak;
-		}
-	}
-	
-
-	// Raised cosine helpers
-	inline float sinc(float x)
-	{
-		if (std::fabsf(x) < 1e-6f)
-			return 1.0f;
-
-		return sinf(M_PI * x) / (M_PI * x);
-	}
-
-	inline float raisedCosine(float t, float T, float beta)
-	{
-		float x = t / T;
-
-		// Special case: t = ±T/(2*beta)
-		float denom = 1.0f - std::powf(2.0f * beta * x, 2.0f);
-
-		if (std::fabsf(denom) < 1e-6f)
-		{
-			return (M_PI / 4.0f) * sinc(1.0f / (2.0f * beta));
-		}
-
-		return sinc(x) * std::cosf(M_PI * beta * x) / denom;
-	}
-
 	// Delay
 	void buildRandomDelay();
 	float getDelay(int modeIdx);
 };
+
+
+
