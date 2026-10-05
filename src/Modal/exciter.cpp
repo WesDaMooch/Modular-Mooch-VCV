@@ -1,15 +1,27 @@
 #include "exciter.hpp"
 
 
-
-
-// Granulator
-
-Granulator::Granulator() {
+// Granular exciter
+Exciter::Exciter() {
+    setSampleRate(sr);
     buildTables();
+
+    velocityFilter.setLowpass(sr * 0.49f); // TODO: set a good default value
+
+    // Set default values
+    for (size_t channel = 0; channel < MAX_CHANNELS; channel++) {
+        shape[channel] = 0.5;
+        grainPlaybackSpeed[channel] = 0.01f;
+    }
 }
 
-void Granulator::buildTables() {
+void Exciter::setSampleRate(int newSampleRate) {
+    sr = mClamp(newSampleRate, 20, static_cast<int>(sr * 0.5f));
+    velocityFilter.setSampleRate(sr);
+    adsr.setSampleRate(sr);
+}
+
+void Exciter::buildTables() {
     // Exciter tables
     size_t tableIdx = 0;
     float peak = 0.f;
@@ -111,8 +123,7 @@ void Granulator::buildTables() {
     normaliseAmplitudeEnvelope(tableIdx, peak);
 }
 
-
-void Granulator::trigger(GranulatorTriggerParams& p) {
+void Exciter::trigger() {
     // Temp stuff just to get one grain to play
     //tablePhase[0] = 0.f;
     //tableActive[0] = true;
@@ -121,30 +132,47 @@ void Granulator::trigger(GranulatorTriggerParams& p) {
     // At 1 - play a grain (but dont play all grains)
     // 0 dont play a grain
 
-    shapeParam = p.shape;
+    // Retrigger ADSRs
+    // TODO: add spawnProbability adsr
+    // gain adsr, or just use the spawn one?
+    adsr.gate(true);
 
     spawnProbability = 1.f;
-    float spawnProbabiltyTime = 2.f; // s
+    float spawnProbabiltyTime = 1.5f; // seconds
 
     spawnProbabilityDecay = 1.f / (spawnProbabiltyTime * sr);
     spawnPhase = 0.f;
 
-    // Immediately launch first grain
-    spawnGrain();
+    // Immediately spawn grain
+    //spawnGrain();
 }
 
-void Granulator::spawnGrain()
+void Exciter::spawnGrain()
 {
-    const float shapeVarianceAmount = 0.f; // 10%
+    // Modulatables:
+    // Shape,
+    // PlaybackSpeed,
+    // Density,
+    // Gain,
+    // SpawnRate?
+
+    const float shapeVarianceAmount = 0.05f; // 5%, 10%, 15%?
+    const float playbackSpeedVarianceAmount = 0.2f;
+
+    const float grainSpeedTemp = 4.f; //TODO: think I want to control from somewhere else...
 
     for (int channel = 0; channel < MAX_CHANNELS; channel++)
     {
+        // Find inactive channel
         if (!tableActive[channel])
         {
             // Set grain parameters
             float shapeVariance = (rack::random::uniform() * 2.f - 1.f) * shapeVarianceAmount;
-            shape = mClamp(shapeParam + shapeVariance, 0.f, 1.f);
-                
+            shape[channel] = mClamp(shapeParam + shapeVariance, 0.f, 1.f);
+            
+            float playbackSpeedVariance = (rack::random::uniform() * 2.f - 1.f) * playbackSpeedVarianceAmount;
+            grainPlaybackSpeed[channel] = mClamp(grainSpeedTemp + playbackSpeedVariance, 1.f, 8.f);
+
             tablePhase[channel] = 0.f;
             tableActive[channel] = true;
             return;
@@ -152,8 +180,8 @@ void Granulator::spawnGrain()
     }
 }
 
-float Granulator::process() {
-    float output = 0.f;
+void Exciter::process(ExciterParams& p) {
+    shapeParam = p.shape;
 
     // Update spawn envelope
     spawnProbability -= spawnProbabilityDecay;
@@ -162,7 +190,7 @@ float Granulator::process() {
         spawnProbability = 0.f;
 
     // Spawn grains
-    spawnPhase += spawnRate / sr;
+    spawnPhase += spawnRate / sr; //TODO: * deltaTime
 
     if (spawnPhase >= 1.f)
     {
@@ -175,12 +203,14 @@ float Granulator::process() {
     }
 
     // Process active grains
+    output = 0.f;
+
     for (int channel = 0; channel < MAX_CHANNELS; channel++)
     {
         if (!tableActive[channel])
             continue;
 
-        float tablePosition = shape * (NUM_TABLES - 1);
+        float tablePosition = shape[channel] * (NUM_TABLES - 1);
 
         int typeA = static_cast<int>(std::floorf(tablePosition));
         int typeB = static_cast<int>(std::ceilf(tablePosition));
@@ -199,7 +229,7 @@ float Granulator::process() {
             float grain = mInterp(typeFrac, sampleA, sampleB);
             output += grain;
 
-            tablePhase[channel] += tablePlaySpeed;
+            tablePhase[channel] += grainPlaybackSpeed[channel];
         }
         else
         {
@@ -207,122 +237,22 @@ float Granulator::process() {
         }
     }
 
+    // TODO: Mix in highpassed 'Air' noise
+    // TODO: have an air param?
+
+    // Velocity lowpass filter
+    if (velocityParam != p.velocity) {
+        velocityParam = mClamp(p.velocity, 0.f, 1.f);
+        float cutoffHz = 20.f * std::pow(20000.f / 20.f, velocityParam);
+        velocityFilter.setLowpass(cutoffHz);
+        velocityParam = p.velocity;
+    }
+
+    //output = velocityFilter.process(output) * 0.25f; // 1/ MAX_CHANNELS
+    output = adsr.process(); // 1/ MAX_CHANNELS
+
+}
+
+float Exciter::get() {
     return output;
 }
-
-
-// Exciter
-Exciter::Exciter() {
-    buildLuts();
-}
-
-void Exciter::buildLuts() {
-    // Delay tables
-    static constexpr float delayExpCurve = 200.0f;
-
-    for (int i = 0; i < MAX_MODES; i++) {
-        float x = static_cast<float>(i) / (MAX_MODES - 1);
-        float reverseX = (x - 1.0f) * -1.0f;
-
-        // Delay 
-        // Type 0 - Decreasing exponential
-        delayTypeLuts[0][i] = (std::pow(delayExpCurve, x) - 1.f) / (delayExpCurve - 1.f);
-        
-        // Type 1 - Decreasing linear
-        delayTypeLuts[1][i] = x;
-
-        // Type 3 - Increasing linear
-        delayTypeLuts[3][i] = reverseX;
-
-        // Type 4 - Increasing exponential
-        delayTypeLuts[4][i] = (std::pow(delayExpCurve, reverseX) - 1.f) / (delayExpCurve - 1.f);
-    }
-
-    // Type 2 - Random delay
-    buildRandomDelay();
-}
-
-void Exciter::trigger(ExciterTriggerParams& p) {
-    velocityParam = p.velocity;
-    noiseParam =    p.noise;
-
-    granulator.trigger(p.g);
-
-    // Delay
-    delayTime = mClamp(p.delayTime, 0.f, 1.f);
-    delayType = mClamp(p.delayType, 0.0f, 1.0f);
-    buildRandomDelay();
-}
-
-void Exciter::update(float deltaTime) {
-    // Apply noise
-    // TODO: Just have a noisy turkey window shape, nah lets go with some granular idea
-    //float noise = rack::random::uniform() * 2.0f - 1.0f;
-    //excitation += excitation * noise; //* 0.7f; // noiseParam;
-
-    // Write into delay buffers
-    exciterDelayBuffer[writeIdx] = granulator.process() * velocityParam;
-    // TODO: velocity lp filter
-
-}
-
-
-void Exciter::reset() {
-
-}
-
-float Exciter::get(int modeIdx) {
-    // Delay
-    float delayNorm = getDelay(modeIdx);
-    int delaySamples = static_cast<int>(delayNorm * MAX_DELAY_SAMPLES * delayTime);
-
-    int readIdx = writeIdx - delaySamples;
-
-    while (readIdx < 0)
-        readIdx += MAX_DELAY_SAMPLES;
-    
-    return exciterDelayBuffer[readIdx];
-}
-
-void Exciter::advanceWriteIdx() {
-    writeIdx++;
-    if (writeIdx >= MAX_DELAY_SAMPLES)
-        writeIdx = 0;
-}
-
-
-void Exciter::buildRandomDelay() {
-    // Type 2 - Random delay
-    for (int i = 0; i < MAX_MODES; i++)
-        delayTypeLuts[2][i] = randomValue();
-}
-
-
-float Exciter::getDelay(int modeIdx) {
-    modeIdx = mClamp(modeIdx, 0, MAX_MODES);
-
-    float state = delayType * (NUM_DELAY_TYPES - 1);
-
-    if (state <= 1.0f) {
-        // Index by Mode (Linear)
-        return mInterp(state, delayTypeLuts[0][modeIdx], delayTypeLuts[1][modeIdx]);
-    }
-    else if (state > 1.0f && state <= 2.0f) {
-        // State 1 - Index by Mode (Exponential)
-        float xFade = state - 1.0f;
-        return mInterp(xFade, delayTypeLuts[1][modeIdx], delayTypeLuts[2][modeIdx]);
-    }
-    else if (state > 2.0f && state <= 3.0f) {
-        float xFade = state - 2.0f;
-        return mInterp(xFade, delayTypeLuts[2][modeIdx], delayTypeLuts[3][modeIdx]);
-    }
-    else if (state > 3.0f && state <= 4.0f) {
-        float xFade = state - 3.0f;
-        return mInterp(xFade, delayTypeLuts[3][modeIdx], delayTypeLuts[4][modeIdx]);
-    }
-
-    return 0.0f;
-}
-
-
-

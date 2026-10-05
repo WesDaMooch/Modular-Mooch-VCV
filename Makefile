@@ -12,6 +12,7 @@ RACK_DIR ?= ../..
 
 # Add .cpp files to the build
 SOURCES += $(wildcard src/*.cpp)
+SOURCES += $(wildcard src/dsp/*.cpp)
 SOURCES += $(wildcard src/Wolfram/*.cpp)
 SOURCES += $(wildcard src/Modal/*.cpp)
 

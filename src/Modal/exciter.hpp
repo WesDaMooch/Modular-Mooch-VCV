@@ -3,61 +3,58 @@
 #include <cmath>
 #include <random>
 #include <rack.hpp>
+#include "..\dsp\biquad.hpp"
+#include "..\dsp\adsr.hpp"
 #include "common.hpp"
 
-
-struct GranulatorTriggerParams
+struct ExciterParams
 {
 	float shape = 0.f;
-};
-
-struct ExciterTriggerParams
-{
-	GranulatorTriggerParams g;
-
+	float density = 0.f;
 	float velocity = 0.f;
-	float noise = 0.f;
-
-	//Delay
-	float delayTime = 0.f;
-	float delayType = 0.f;
 };
 
-
-struct Granulator
+class Exciter
 {
-	Granulator();
+public:
+	Exciter();
 	void buildTables();
-	// void setSamplerate(int newSamplerate);
-	void trigger(GranulatorTriggerParams& p);
-	void spawnGrain();
-	float process();
+	void setSampleRate(int newSampleRate);
+	void trigger();
+	void process(ExciterParams& p);
+	float get();
 
-	int sr = 48000; 
+protected:
+	void spawnGrain();
 
 	static constexpr int MAX_CHANNELS = 4;
 	static constexpr int NUM_TABLES = 3;
 	static constexpr int TABLE_LEN = 1024;
 
-	int channels = 1; // not used... yet?
+	std::array<bool, MAX_CHANNELS> tableActive = {};
+	std::array<size_t, MAX_CHANNELS> currentTableIdx = {};
+	std::array<float, MAX_CHANNELS> tablePhase = {};
+	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> table = {};
 
-	float density = 1.f;
+	int sr = 48000;
+	float output = 0.f;
+
+	ADSR adsr;
+
+	float density = 1.f; // TODO: not used?
 	float spawnProbability = 0.f;
 	float spawnProbabilityDecay = 0.f;
 
 	float spawnPhase = 0.f;
-	float spawnRate = 100.f;
+	float spawnRate = 400.f;
+
+	std::array<float, MAX_CHANNELS> grainPlaybackSpeed = {};
 
 	float shapeParam = 0.f;
-	float shape = 0.f;
+	std::array<float, MAX_CHANNELS> shape = {};
 
-	float tablePlaySpeed = 8.f; // TODO: each grain could have a different speed
-
-	std::array<bool, MAX_CHANNELS> tableActive = {};
-	std::array<size_t, MAX_CHANNELS> currentTableIdx = {};
-	std::array<float, MAX_CHANNELS> tablePhase = {};
-
-	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> table = {};
+	float velocityParam = 0.f;
+	Biquad velocityFilter;
 
 	inline void normaliseAmplitudeEnvelope(int tableIdx, float peak) {
 		tableIdx = mClamp(tableIdx, 0, (NUM_TABLES - 1));
@@ -87,55 +84,3 @@ struct Granulator
 		return sinc(x) * std::cosf(M_PI * beta * x) / denom;
 	}
 };
-
-
-class Exciter
-{
-public:
-	Exciter();
-
-	void trigger(ExciterTriggerParams& p);
-	void update(float deltaTime);
-	void advanceWriteIdx();
-	void reset();
-	float get(int modeIdx);
-
-protected:
-	void buildLuts();
-
-	Granulator granulator;
-
-	// Velocity
-	float velocityParam = 0.f;
-
-	// Noise
-	float noiseParam = 0.f;
-
-	// Delay
-	static constexpr int MAX_DELAY_SAMPLES = 144000; // 3 seconds ish
-
-	std::array<float, MAX_DELAY_SAMPLES> exciterDelayBuffer = {};
-	int writeIdx;
-
-	float delayTime = 0.f;
-	float delayType = 0.f;
-
-	// Delay types
-	static constexpr int NUM_DELAY_TYPES = 5;
-	std::array<std::array<float, MAX_MODES>, NUM_DELAY_TYPES> delayTypeLuts = {};
-
-	// TODO: replace with rack random or just remove all together
-	std::mt19937 rng{ std::random_device{}() };
-
-	inline float randomValue() {
-		std::uniform_real_distribution<float> dist(0.f, 1.f);
-		return dist(rng);
-	}
-
-	// Delay
-	void buildRandomDelay();
-	float getDelay(int modeIdx);
-};
-
-
-

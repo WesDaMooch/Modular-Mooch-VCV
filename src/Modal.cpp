@@ -42,7 +42,7 @@ struct Modal : Module
 	{
 		TRIG_PARAM,
 		EXCITER_SHAPE_PARAM,
-		EXCITER_NOISE_PARAM,
+		EXCITER_DENSITY_PARAM,
 		VELOCITY_PARAM,
 		PITCH_PARAM,
 		MORPH_PARAM,
@@ -52,7 +52,7 @@ struct Modal : Module
 		TIMBRE_PARAM,
 		DELAY_TIME_PARAM,
 		DELAY_TYPE_PARAM,
-		SOFT_PARAM,
+		MUFFLE_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId
@@ -87,7 +87,7 @@ struct Modal : Module
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
 	Exciter exciter;
-	ExciterTriggerParams exciterParams;
+	ExciterParams exciterParams;
 
 	std::array<StructureBase*, NUM_STRUCTURES> structures = {};
 	String string;
@@ -102,9 +102,9 @@ struct Modal : Module
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
 		configButton(TRIG_PARAM, "Trigger");
-		configParam(EXCITER_SHAPE_PARAM, 0.f, 1.f, 0.f, "Exciter Shape");
-		configParam(EXCITER_NOISE_PARAM, 0.f, 1.f, 0.f, "Exciter Noise");
-		configParam(VELOCITY_PARAM, 0.f, 2.f, 1.f, "Velocity");
+		configParam(EXCITER_SHAPE_PARAM, 0.f, 1.f, 0.75f, "Exciter Shape");
+		configParam(EXCITER_DENSITY_PARAM, 0.f, 1.f, 0.f, "Exciter Density");
+		configParam(VELOCITY_PARAM, 0.f, 1.f, 0.8f, "Velocity");
 		configParam(PITCH_PARAM, -54.0f, 54.0f, 0.0f, "Pitch", " Hz", dsp::FREQ_SEMITONE, dsp::FREQ_C4);
 		configParam(MORPH_PARAM, 0.0f, 1.0f, 0.5f, "Morph");
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
@@ -113,8 +113,7 @@ struct Modal : Module
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
 		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Delay Time");
 		configParam(DELAY_TYPE_PARAM, 0.0f, 1.0f, 0.0f, "Delay Type");
-		configButton(SOFT_PARAM, "Soft");
-		
+		configButton(MUFFLE_PARAM, "Muffle");
 		// Inputs
 		configInput(TRIG_INPUT, "Trigger");
 		configInput(EXCITER_INPUT, "Exciter");
@@ -186,25 +185,22 @@ struct Modal : Module
 
 		bool gate = trig || trigSchmitt.isHigh();
 
-		if (trigBoolean.process(gate)) {
-			// On trigger
-			exciterParams = {};
+		// Set exciter params
+		// Velocity
+		bool velocityCvConnected = inputs[VELOCITY_INPUT].isConnected();
+		float velocityCv = velocityCvConnected ? inputs[VELOCITY_INPUT].getVoltage() * 0.1f : 1.f;
+		velocityCv = mClamp(velocityCv, 0.f, 1.f);
+		exciterParams.velocity = velocityCv * params[VELOCITY_PARAM].getValue();
+		exciterParams.shape = params[EXCITER_SHAPE_PARAM].getValue();
+		exciterParams.density = params[EXCITER_DENSITY_PARAM].getValue();
+		exciter.process(exciterParams);
 
-			exciterParams.g.shape = params[EXCITER_SHAPE_PARAM].getValue();
+		if (trigBoolean.process(gate)) 
+			exciter.trigger();
 
-			bool velocityCvConnected = inputs[VELOCITY_INPUT].isConnected();
-			float velocityCv = velocityCvConnected ? inputs[VELOCITY_INPUT].getVoltage() * 0.2f : 1.f;
-			velocityCv = mClamp(velocityCv, 0.f, 2.f);
-			exciterParams.velocity = velocityCv * params[VELOCITY_PARAM].getValue();
-			exciterParams.noise = params[EXCITER_NOISE_PARAM].getValue();
-			exciterParams.delayTime = params[DELAY_TIME_PARAM].getValue();
-			exciterParams.delayType = params[DELAY_TYPE_PARAM].getValue();
+		float excitation = exciter.get();
 
-			exciter.trigger(exciterParams);
-		}
-
-		exciter.update(args.sampleTime);
-
+		// Resonator
 		float pitch = (params[PITCH_PARAM].getValue() / 12.f) + inputs[PITCH_INPUT].getVoltage();
 		float freq = dsp::FREQ_C4 * dsp::exp2_taylor5(pitch);
 		sParams.fundamentalFreq = freq;
@@ -233,14 +229,12 @@ struct Modal : Module
 		}
 
 		// Solf button
-		if (softBoolean.process(params[SOFT_PARAM].getValue()))
+		if (softBoolean.process(params[MUFFLE_PARAM].getValue()))
 			soft ^= true;
 
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
 		{
-			float exciterOut = exciter.get(i);
-
 			// Structure
 			coefs = {};
 
@@ -259,7 +253,7 @@ struct Modal : Module
 			
 			// Filter bank
 			resonators[i].setCoefficients(coefs);
-			resonators[i].process(exciterOut);
+			resonators[i].process(excitation);
 
 			float modeOut = resonators[i].bandpass();
 
@@ -272,8 +266,6 @@ struct Modal : Module
 
 			output += modeOut;
 		}
-
-		exciter.advanceWriteIdx();
 
 		// Output
 		/*
@@ -290,8 +282,8 @@ struct Modal : Module
 		output *= 0.0625; // 1/16
 		output = std::tanh(output); // easy soft clipping
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
-		outputs[AUDIO_OUTPUT].setVoltage(output);
-		//outputs[AUDIO_OUTPUT].setVoltage(exciter.get(0));
+		//outputs[AUDIO_OUTPUT].setVoltage(output);
+		outputs[AUDIO_OUTPUT].setVoltage(excitation);
 	}		
 };
 
@@ -310,7 +302,7 @@ struct ModalModuleWidget : ModuleWidget
 		// Parameters
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(10.0f, 20.0f)), module, Modal::TRIG_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 80.0f)), module, Modal::EXCITER_SHAPE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 100.0f)), module, Modal::EXCITER_NOISE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 100.0f)), module, Modal::EXCITER_DENSITY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.0f, 40.0f)), module, Modal::VELOCITY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 20.0f)), module, Modal::PITCH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 40.0f)), module, Modal::MORPH_PARAM));
@@ -320,7 +312,7 @@ struct ModalModuleWidget : ModuleWidget
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 80.0f)), module, Modal::STRUCTURE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 40.0f)), module, Modal::DELAY_TYPE_PARAM));
-		addParam(createParamCentered<VCVButton>(mm2px(Vec(30.0f, 60.0f)), module, Modal::SOFT_PARAM));
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(30.0f, 60.0f)), module, Modal::MUFFLE_PARAM));
 
 
 		// Inputs
