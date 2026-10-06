@@ -7,18 +7,12 @@ Exciter::Exciter() {
     buildTables();
 
     velocityFilter.setLowpass(sr * 0.49f); // TODO: set a good default value
-
-    // Set default values
-    for (size_t channel = 0; channel < MAX_CHANNELS; channel++) {
-        shape[channel] = 0.5;
-        grainPlaybackSpeed[channel] = 0.01f;
-    }
 }
 
 void Exciter::setSampleRate(int newSampleRate) {
     sr = mClamp(newSampleRate, 20, static_cast<int>(sr * 0.5f));
     velocityFilter.setSampleRate(sr);
-    adsr.setSampleRate(sr);
+    amplitudeADR.setSampleRate(sr);
 }
 
 void Exciter::buildTables() {
@@ -124,27 +118,26 @@ void Exciter::buildTables() {
 }
 
 void Exciter::trigger() {
-    // Temp stuff just to get one grain to play
-    //tablePhase[0] = 0.f;
-    //tableActive[0] = true;
 
-    // Some ramp 1 to 0 (can att attach decay later) that decides whether a grain should be played
-    // At 1 - play a grain (but dont play all grains)
-    // 0 dont play a grain
 
-    // Retrigger ADSRs
-    // TODO: add spawnProbability adsr
-    // gain adsr, or just use the spawn one?
-    adsr.gate(true);
+    float pluckGain = 1.f;
 
-    spawnProbability = 1.f;
-    float spawnProbabiltyTime = 1.5f; // seconds
+    // Pluck first grain
+    grain[0].active = true;
+    grain[0].phase = 0.f;
+    grain[0].speed = 8.f;
+    grain[0].shape = shapeParam;
+    grain[0].gain = pluckGain;
 
-    spawnProbabilityDecay = 1.f / (spawnProbabiltyTime * sr);
-    spawnPhase = 0.f;
+    // TODO: is this a div by 0!
+    amplitudeADR.setParams(ADR::Params(
+        0.f,
+        0.3f,
+        0.f,
+        0.f
+    ));
 
-    // Immediately spawn grain
-    //spawnGrain();
+    amplitudeADR.trigger();
 }
 
 void Exciter::spawnGrain()
@@ -152,51 +145,47 @@ void Exciter::spawnGrain()
     // Modulatables:
     // Shape,
     // PlaybackSpeed,
-    // Density,
     // Gain,
-    // SpawnRate?
 
     const float shapeVarianceAmount = 0.05f; // 5%, 10%, 15%?
-    const float playbackSpeedVarianceAmount = 0.2f;
-
-    const float grainSpeedTemp = 4.f; //TODO: think I want to control from somewhere else...
-
-    for (int channel = 0; channel < MAX_CHANNELS; channel++)
+    const float playbackSpeedVarianceAmount = 0.3f;
+    const float grainSpeedTemp = 2.f; //TODO: think I want to control from somewhere else...
+    // Make grain speed dependant on module pitch input?
+        
+    // Granular bow / blow
+    for (int channel = 1; channel < MAX_CHANNELS; channel++)
     {
         // Find inactive channel
-        if (!tableActive[channel])
+        if (!grain[channel].active)
         {
             // Set grain parameters
+            grain[channel].gain = densityParam; // 1 / (MAX_CHANNEL * 0.5)?? 
+
             float shapeVariance = (rack::random::uniform() * 2.f - 1.f) * shapeVarianceAmount;
-            shape[channel] = mClamp(shapeParam + shapeVariance, 0.f, 1.f);
+            grain[channel].shape = mClamp(shapeParam + shapeVariance, 0.f, 1.f);
             
             float playbackSpeedVariance = (rack::random::uniform() * 2.f - 1.f) * playbackSpeedVarianceAmount;
-            grainPlaybackSpeed[channel] = mClamp(grainSpeedTemp + playbackSpeedVariance, 1.f, 8.f);
+            grain[channel].speed = mClamp(grainSpeedTemp + playbackSpeedVariance, 1.f, 8.f);
 
-            tablePhase[channel] = 0.f;
-            tableActive[channel] = true;
+            grain[channel].phase = 0.f;
+            grain[channel].active = true;
             return;
         }
     }
 }
 
 void Exciter::process(ExciterParams& p) {
+    densityParam = p.density;
     shapeParam = p.shape;
 
-    // Update spawn envelope
-    spawnProbability -= spawnProbabilityDecay;
-
-    if (spawnProbability < 0.f)
-        spawnProbability = 0.f;
-
     // Spawn grains
-    spawnPhase += spawnRate / sr; //TODO: * deltaTime
+    spawnPhase += spawnRate / sr; // todo use delta time
 
     if (spawnPhase >= 1.f)
     {
         spawnPhase -= 1.f;
 
-        float probability = spawnProbability * density;
+        float probability = 0.25f;
 
         if (rack::random::uniform() < probability)
             spawnGrain();
@@ -204,36 +193,41 @@ void Exciter::process(ExciterParams& p) {
 
     // Process active grains
     output = 0.f;
+    float amplitude = amplitudeADR.process();
 
     for (int channel = 0; channel < MAX_CHANNELS; channel++)
     {
-        if (!tableActive[channel])
+        if (!grain[channel].active)
             continue;
 
-        float tablePosition = shape[channel] * (NUM_TABLES - 1);
+        float tablePosition = grain[channel].shape * (NUM_TABLES - 1);
 
         int typeA = static_cast<int>(std::floorf(tablePosition));
         int typeB = static_cast<int>(std::ceilf(tablePosition));
 
         float typeFrac = tablePosition - typeA;
 
-        int index0 = static_cast<int>(tablePhase[channel]);
+        int index0 = static_cast<int>(grain[channel].phase);
         int index1 = index0 + 1;
 
-        float frac = tablePhase[channel] - index0;
+        float frac = grain[channel].phase - index0;
 
         if (index1 < TABLE_LEN)
         {
             float sampleA = mInterp(frac, table[typeA][index0], table[typeA][index1]);
             float sampleB = mInterp(frac, table[typeB][index0], table[typeB][index1]);
-            float grain = mInterp(typeFrac, sampleA, sampleB);
-            output += grain;
+            float wave = mInterp(typeFrac, sampleA, sampleB);
+            
+            // Bypass amplitude envelope for pluck
+            float amplitudeEnvelope = (channel == 0) ? 1.f : amplitude;
 
-            tablePhase[channel] += grainPlaybackSpeed[channel];
+            output += wave * grain[channel].gain * amplitudeEnvelope;
+
+            grain[channel].phase += grain[channel].speed;
         }
         else
         {
-            tableActive[channel] = false;
+            grain[channel].active = false;
         }
     }
 
@@ -247,10 +241,8 @@ void Exciter::process(ExciterParams& p) {
         velocityFilter.setLowpass(cutoffHz);
         velocityParam = p.velocity;
     }
-
-    //output = velocityFilter.process(output) * 0.25f; // 1/ MAX_CHANNELS
-    output = adsr.process(); // 1/ MAX_CHANNELS
-
+      
+    output = velocityFilter.process(output);
 }
 
 float Exciter::get() {

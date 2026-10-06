@@ -282,8 +282,8 @@ struct Modal : Module
 		output *= 0.0625; // 1/16
 		output = std::tanh(output); // easy soft clipping
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
-		//outputs[AUDIO_OUTPUT].setVoltage(output);
-		outputs[AUDIO_OUTPUT].setVoltage(excitation);
+		outputs[AUDIO_OUTPUT].setVoltage(output);
+		//outputs[AUDIO_OUTPUT].setVoltage(excitation);
 	}		
 };
 

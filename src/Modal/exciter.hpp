@@ -5,7 +5,18 @@
 #include <rack.hpp>
 #include "..\dsp\biquad.hpp"
 #include "..\dsp\adsr.hpp"
+#include "..\dsp\adr.hpp"
 #include "common.hpp"
+
+struct Grain
+{
+	bool active = false;
+	float phase = 0.f;
+
+	float speed = 2.f;
+	float shape = 0.f;
+	float gain = 0.f;
+};
 
 struct ExciterParams
 {
@@ -27,31 +38,22 @@ public:
 protected:
 	void spawnGrain();
 
-	static constexpr int MAX_CHANNELS = 4;
+	static constexpr int MAX_CHANNELS = 8;
 	static constexpr int NUM_TABLES = 3;
 	static constexpr int TABLE_LEN = 1024;
 
-	std::array<bool, MAX_CHANNELS> tableActive = {};
-	std::array<size_t, MAX_CHANNELS> currentTableIdx = {};
-	std::array<float, MAX_CHANNELS> tablePhase = {};
+	std::array<Grain, MAX_CHANNELS> grain = {};
 	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> table = {};
 
 	int sr = 48000;
 	float output = 0.f;
 
-	ADSR adsr;
-
-	float density = 1.f; // TODO: not used?
-	float spawnProbability = 0.f;
-	float spawnProbabilityDecay = 0.f;
-
+	ADR amplitudeADR;
 	float spawnPhase = 0.f;
-	float spawnRate = 400.f;
+	float spawnRate = 600.f;
 
-	std::array<float, MAX_CHANNELS> grainPlaybackSpeed = {};
-
+	float densityParam = 0.f;
 	float shapeParam = 0.f;
-	std::array<float, MAX_CHANNELS> shape = {};
 
 	float velocityParam = 0.f;
 	Biquad velocityFilter;
