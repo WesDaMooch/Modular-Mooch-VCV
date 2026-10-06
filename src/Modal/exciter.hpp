@@ -14,13 +14,13 @@ struct Grain
 	float phase = 0.f;
 
 	float speed = 2.f;
-	float shape = 0.f;
+	float texture = 0.f;
 	float gain = 0.f;
 };
 
 struct ExciterParams
 {
-	float shape = 0.f;
+	float texture = 0.f;
 	float density = 0.f;
 	float velocity = 0.f;
 };
@@ -53,7 +53,8 @@ protected:
 	float spawnRate = 600.f;
 
 	float densityParam = 0.f;
-	float shapeParam = 0.f;
+	float textureParam = 0.f;
+	float grainGain = 0.f;
 
 	float velocityParam = 0.f;
 	Biquad velocityFilter;

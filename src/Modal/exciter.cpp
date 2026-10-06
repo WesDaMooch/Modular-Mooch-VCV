@@ -118,23 +118,37 @@ void Exciter::buildTables() {
 }
 
 void Exciter::trigger() {
+    // Density Dial states
+    // Full pluck (0 - 0.33)
+    // Damped pluck (0.33 - 0.5);
 
 
-    float pluckGain = 1.f;
 
+    //const float fullPluckParam = mRemap(densityParam, 0.f, 0.33f);
+
+    grainGain = mRemap(densityParam, 0.f, 0.33f);
+
+    float pluckGain = 2.f;
+
+    if (densityParam > 0.33f)
+    {
+        float dampedPluckParam = mRemap(densityParam, 0.33f, 0.5f);
+        pluckGain = 1.f - dampedPluckParam;
+    }
+   
     // Pluck first grain
     grain[0].active = true;
     grain[0].phase = 0.f;
     grain[0].speed = 8.f;
-    grain[0].shape = shapeParam;
+    grain[0].texture = textureParam;
     grain[0].gain = pluckGain;
 
     // TODO: is this a div by 0!
     amplitudeADR.setParams(ADR::Params(
-        0.f,
+        1.f,
         0.3f,
-        0.f,
-        0.f
+        0.5f,
+        0.5f
     ));
 
     amplitudeADR.trigger();
@@ -149,7 +163,7 @@ void Exciter::spawnGrain()
 
     const float shapeVarianceAmount = 0.05f; // 5%, 10%, 15%?
     const float playbackSpeedVarianceAmount = 0.3f;
-    const float grainSpeedTemp = 2.f; //TODO: think I want to control from somewhere else...
+    const float grainSpeedTemp = 3.5f; //TODO: think I want to control from somewhere else...
     // Make grain speed dependant on module pitch input?
         
     // Granular bow / blow
@@ -159,10 +173,10 @@ void Exciter::spawnGrain()
         if (!grain[channel].active)
         {
             // Set grain parameters
-            grain[channel].gain = densityParam; // 1 / (MAX_CHANNEL * 0.5)?? 
+            grain[channel].gain = grainGain * 0.25; // 1 / (MAX_CHANNEL * 0.5)
 
             float shapeVariance = (rack::random::uniform() * 2.f - 1.f) * shapeVarianceAmount;
-            grain[channel].shape = mClamp(shapeParam + shapeVariance, 0.f, 1.f);
+            grain[channel].texture = mClamp(textureParam + shapeVariance, 0.f, 1.f);
             
             float playbackSpeedVariance = (rack::random::uniform() * 2.f - 1.f) * playbackSpeedVarianceAmount;
             grain[channel].speed = mClamp(grainSpeedTemp + playbackSpeedVariance, 1.f, 8.f);
@@ -176,7 +190,7 @@ void Exciter::spawnGrain()
 
 void Exciter::process(ExciterParams& p) {
     densityParam = p.density;
-    shapeParam = p.shape;
+    textureParam = p.texture;
 
     // Spawn grains
     spawnPhase += spawnRate / sr; // todo use delta time
@@ -200,7 +214,7 @@ void Exciter::process(ExciterParams& p) {
         if (!grain[channel].active)
             continue;
 
-        float tablePosition = grain[channel].shape * (NUM_TABLES - 1);
+        float tablePosition = grain[channel].texture * (NUM_TABLES - 1);
 
         int typeA = static_cast<int>(std::floorf(tablePosition));
         int typeB = static_cast<int>(std::ceilf(tablePosition));

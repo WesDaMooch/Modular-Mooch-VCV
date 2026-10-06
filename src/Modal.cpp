@@ -41,7 +41,7 @@ struct Modal : Module
 	enum ParamId
 	{
 		TRIG_PARAM,
-		EXCITER_SHAPE_PARAM,
+		EXCITER_TEXTURE_PARAM,
 		EXCITER_DENSITY_PARAM,
 		VELOCITY_PARAM,
 		PITCH_PARAM,
@@ -102,7 +102,7 @@ struct Modal : Module
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
 		configButton(TRIG_PARAM, "Trigger");
-		configParam(EXCITER_SHAPE_PARAM, 0.f, 1.f, 0.75f, "Exciter Shape");
+		configParam(EXCITER_TEXTURE_PARAM, 0.f, 1.f, 0.75f, "Exciter Texture");
 		configParam(EXCITER_DENSITY_PARAM, 0.f, 1.f, 0.f, "Exciter Density");
 		configParam(VELOCITY_PARAM, 0.f, 1.f, 0.8f, "Velocity");
 		configParam(PITCH_PARAM, -54.0f, 54.0f, 0.0f, "Pitch", " Hz", dsp::FREQ_SEMITONE, dsp::FREQ_C4);
@@ -191,7 +191,7 @@ struct Modal : Module
 		float velocityCv = velocityCvConnected ? inputs[VELOCITY_INPUT].getVoltage() * 0.1f : 1.f;
 		velocityCv = mClamp(velocityCv, 0.f, 1.f);
 		exciterParams.velocity = velocityCv * params[VELOCITY_PARAM].getValue();
-		exciterParams.shape = params[EXCITER_SHAPE_PARAM].getValue();
+		exciterParams.texture = params[EXCITER_TEXTURE_PARAM].getValue();
 		exciterParams.density = params[EXCITER_DENSITY_PARAM].getValue();
 		exciter.process(exciterParams);
 
@@ -301,7 +301,7 @@ struct ModalModuleWidget : ModuleWidget
 		addChild(createWidget<ThemedScrew>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		// Parameters
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(10.0f, 20.0f)), module, Modal::TRIG_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 80.0f)), module, Modal::EXCITER_SHAPE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 80.0f)), module, Modal::EXCITER_TEXTURE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 100.0f)), module, Modal::EXCITER_DENSITY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.0f, 40.0f)), module, Modal::VELOCITY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 20.0f)), module, Modal::PITCH_PARAM));
