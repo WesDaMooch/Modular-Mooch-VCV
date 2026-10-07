@@ -1,7 +1,9 @@
 #include "adr.hpp"
 
 
-ADR::ADR() {}
+ADR::ADR() {
+    reset();
+}
 
 
 void ADR::setSampleRate(int sampleRate) {
@@ -10,7 +12,12 @@ void ADR::setSampleRate(int sampleRate) {
 
 
 void ADR::setParams(const Params& params) {
-    this->p = p;
+    const float EPSILON = 1e-6f;
+
+    this->p.attack      = std::max(p.attack, EPSILON);
+    this->p.decay       = std::max(p.decay, EPSILON);;
+    this->p.decayLevel  = std::max(p.decayLevel, EPSILON);;
+    this->p.release     = std::max(p.release, EPSILON);;
 }
 
 
@@ -55,4 +62,9 @@ float ADR::process() {
     }
 
     return value;
+}
+
+void ADR::reset() {
+    stage = IDLE;
+    value = 0.f;
 }

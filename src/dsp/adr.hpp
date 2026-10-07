@@ -2,7 +2,9 @@
 
 
 #pragma once
+#include <algorithm>
 
+// TODO: no need for params 
 
 class ADR
 {
@@ -10,18 +12,18 @@ public:
     struct Params {
         float attack = 0.01f;
         float decay = 0.1f;
-        float release = 0.2f;
         float decayLevel = 0.7f;
+        float release = 0.2f;
 
         Params(
             float attack = 0.01f,
             float decay = 0.1f,
-            float release = 0.2f,
-            float decayLevel = 0.7f)
+            float decayLevel = 0.7f,
+            float release = 0.2f)
             : attack(attack)
             , decay(decay)
-            , release(release)
             , decayLevel(decayLevel)
+            , release(release)
         {
         }
     };

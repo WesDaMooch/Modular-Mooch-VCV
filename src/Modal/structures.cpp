@@ -2,7 +2,7 @@
 
 
 String::String() {
-	buildLuts();
+	buildTables();
 	update();
 }
 
@@ -18,18 +18,23 @@ void String::setParams(const StructureParams& newParams) {
 	fundamentalFreq = mClamp(newParams.fundamentalFreq, minFreq, maxFreq);
 	inharmonicity = mMap(newParams.morph, -0.999f, 0.999f);
 	detune = mMap(newParams.morph, -1.f, 1.f);
-	position = mMap(newParams.position, 0.0001f, 0.9999f);
-	baseDecay = mMap(newParams.decay, 0.5f, 250.0f);
-	amplitudeDialIdx = static_cast<int>(mMap(newParams.timbre, 0.f, (float)(DIAL_RESOLUTION - 1)));
-	decayDialIdx = static_cast<int>(mMap(newParams.timbre, 0.f, (float)(DIAL_RESOLUTION - 1)));
+	position = mMap(newParams.position, 0.001f, 0.999f);
+	baseDecay = mMap(newParams.decay, 0.5f, 400.0f); 
+
+	float timbreDialPos = mMap(newParams.timbre, 0.f, float(DIAL_RESOLUTION - 1));
+	amplitudeDialIdxA = static_cast<int>(std::floor(timbreDialPos));
+	amplitudeDialIdxB = std::min(amplitudeDialIdxA + 1, DIAL_RESOLUTION - 1);
+	amplitudeXFade = timbreDialPos - amplitudeDialIdxA;
+
+	decayDialIdxA = static_cast<int>(std::floor(timbreDialPos));
+	decayDialIdxB = std::min(decayDialIdxA + 1, DIAL_RESOLUTION - 1);
+	decayXFade = timbreDialPos - decayDialIdxA;
 
 	prevParams = newParams;
 	update();
 }
 
 void String::update() {
-	activeModes = 0;
-
 
 	const float maxDetune = 5.f; // Hz
 	for (int idx = 0; idx < MAX_MODES; idx++) {
@@ -40,6 +45,7 @@ void String::update() {
 		
 		float activeDetune = detune * maxDetune * idx;
 
+		// TODO: this detune isnt very interesting
 		if (n % 2  != 0) {
 			// Odd
 			activeDetune *= -1;
@@ -58,17 +64,11 @@ void String::update() {
 
 		// Amplitude
 		float positionAmp = std::sin(M_PI * n * position);
-		coefs[idx].amplitude = positionAmp * amplitudeDialLut[idx][amplitudeDialIdx];
+		coefs[idx].amplitude = positionAmp * mInterp(amplitudeXFade, amplitudeDialTable[idx][amplitudeDialIdxA], amplitudeDialTable[idx][amplitudeDialIdxB]);
 
 		// Decay (Q)
-		coefs[idx].q = baseDecay * std::pow(float(n), -decayDialLut[decayDialIdx]);
-
-		activeModes++;		
+		coefs[idx].q = baseDecay * std::pow(float(n), -mInterp(decayXFade, decayDialTable[decayDialIdxA], decayDialTable[decayDialIdxB]));
 	}
-}
-
-float String::getActiveModesScaler() const {
-	return activeModes > 0 ? 1.0f / activeModes : 0.0f;
 }
 
 const SvfCoefficients& String::getCoefficients(int idx) const {
@@ -76,7 +76,10 @@ const SvfCoefficients& String::getCoefficients(int idx) const {
 	return coefs[idx];
 }
 
-void String::buildLuts() {
+void String::buildTables() {
+	// TODO: high timbre quick damps only the fundimental mode,
+	// and as it increases damps the next 6 - 10?
+	// Use and exponetial curve
 	static constexpr float decaySlopeMax = 2.f;	// Damped / muted
 	static constexpr float decayDialStart = 0.2f;
 	static constexpr float decayDialEnd = 0.66f;
@@ -89,7 +92,7 @@ void String::buildLuts() {
 		float value = static_cast<float>(dialIdx) / (DIAL_RESOLUTION - 1);
 
 		float delaySlope = mRemapInv(value, decayDialStart, decayDialEnd);
-		decayDialLut[dialIdx] = delaySlope * decaySlopeMax;
+		decayDialTable[dialIdx] = delaySlope * decaySlopeMax;
 
 		for (int modeIdx = 0; modeIdx < MAX_MODES; modeIdx++) {
 
@@ -106,10 +109,11 @@ void String::buildLuts() {
 			else if (value > lowModeAmpDialStart) {
 				// Low modes fade out
 				float fade = mRemap(value, lowModeAmpDialStart, 1.f);
+				fade = 1.f - std::pow(1.f - fade, 2.f);	// Exponent - how quicky lows die out
 				amp = modePosition + (1.f - modePosition) * (1.f - fade);
 			}
 
-			amplitudeDialLut[modeIdx][dialIdx] = amp;
+			amplitudeDialTable[modeIdx][dialIdx] = amp;
 		}
 	}
 }
@@ -144,7 +148,6 @@ void Drum2::setParams(const StructureParams& newParams) {
 }
 
 void Drum2::update() {
-	activeModes = 0;
 	for (size_t idx = 0; idx < MAX_MODES; idx++)
 	{
 		const Root& r = roots[idx];
@@ -162,14 +165,7 @@ void Drum2::update() {
 		float weight = bessel(r.order, r.value * position);
 		coefs[idx].q = scale(weight, 0.f, 1.f, overtones, 1, damping) * 100.f;
 		coefs[idx].amplitude = 1.f;
-
-		activeModes++;
 	}
-}
-
-
-float Drum2::getActiveModesScaler() const {
-	return activeModes > 0 ? 1.0f / activeModes : 0.0f;
 }
 
 

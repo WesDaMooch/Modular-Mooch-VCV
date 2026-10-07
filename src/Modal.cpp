@@ -10,14 +10,18 @@
 // Ideas
 // Multiple layers of modes
 
+// Different filter types
+// Digital biquad
+// T Bridge (808-909)
+// Wasp filter 
+// Moog Ladder?
+// How will this change the sound
+
+// Feedback amound though coupling filter and body resonator
+
 // Randomness (see max msp book) on the amplitudes and q of modes
 
 // TODO:
-// Exciter goes into spectal env -> an amount of pre gain to the exciter input to a mode. Not sure about this now
-
-// String
-// decay is exp (or modelled) q, decay param just controls base decay
-
 // Body resonitors
 // https://ccrma.stanford.edu/~jos/jnmr/Body_Resonators.html
 // Guitar / violin 
@@ -33,8 +37,7 @@
 // Punch
 // Pitch env, Amount and decay
 
-// Optimize SVF or uses biquads
-// use normalize q input 0
+// use normalize q input 0?
 
 struct Modal : Module
 {
@@ -193,7 +196,7 @@ struct Modal : Module
 		exciterParams.velocity = velocityCv * params[VELOCITY_PARAM].getValue();
 		exciterParams.texture = params[EXCITER_TEXTURE_PARAM].getValue();
 		exciterParams.density = params[EXCITER_DENSITY_PARAM].getValue();
-		exciter.process(exciterParams);
+		exciter.process(args.sampleTime, exciterParams);
 
 		if (trigBoolean.process(gate)) 
 			exciter.trigger();
@@ -258,6 +261,8 @@ struct Modal : Module
 			float modeOut = resonators[i].bandpass();
 
 			// Odd polarity flip
+			// TODO: needs a little fade between flipped modes,
+			// to stop clicking
 			if (soft) {
 				// TODO: optimize %
 				if (i % 2 != 0)
@@ -267,18 +272,6 @@ struct Modal : Module
 			output += modeOut;
 		}
 
-		// Output
-		/*
-		float activeModesScaler = 0.f;
-
-		if (structA != nullptr) {
-			activeModesScaler = structA->getActiveModesScaler();
-
-			if (structB != nullptr)
-				activeModesScaler = mInterp(structCrossfade, activeModesScaler, structB->getActiveModesScaler());
-		}
-		output = output * activeModesScaler;
-		*/
 		output *= 0.0625; // 1/16
 		output = std::tanh(output); // easy soft clipping
 		output *= 10.f;	// Convert to voltage range (-10 to +10)

@@ -32,7 +32,7 @@ public:
 	void buildTables();
 	void setSampleRate(int newSampleRate);
 	void trigger();
-	void process(ExciterParams& p);
+	void process(float deltaTime, ExciterParams& p);
 	float get();
 
 protected:

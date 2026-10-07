@@ -36,7 +36,6 @@ public:
 	virtual void setSamplerate(int newSamplerate) = 0;
 	virtual void setParams(const StructureParams& newParams) = 0;
 	virtual void update() = 0;
-	virtual float getActiveModesScaler() const = 0;
 	const virtual SvfCoefficients& getCoefficients(int idx) const = 0;
 
 	// TODO: Implement this cloning thing?
@@ -51,12 +50,10 @@ public:
 	void setSamplerate(int newSamplerate) override;
 	void setParams(const StructureParams& newParams) override;
 	void update() override;
-	float getActiveModesScaler() const override;
 	const SvfCoefficients& getCoefficients(int idx) const override;
 
 protected:
 	int sr = 48000;
-	int activeModes = 0;
 
 	constexpr static float minFreq = 20.f;
 	float maxFreq = sr * 0.5f;
@@ -67,16 +64,20 @@ protected:
 	float position = 0.0001f;
 	float baseDecay = 0.5f;
 
-	int decayDialIdx = 0;
-	std::array<float, DIAL_RESOLUTION> decayDialLut = {};
+	int decayDialIdxA = 0;
+	int decayDialIdxB = 0;
+	float decayXFade = 0.f;
+	std::array<float, DIAL_RESOLUTION> decayDialTable = {};
 
-	int amplitudeDialIdx = 0;
-	std::array<std::array<float, DIAL_RESOLUTION>, MAX_MODES> amplitudeDialLut = {};
+	int amplitudeDialIdxA = 0;
+	int amplitudeDialIdxB = 0;
+	float amplitudeXFade = 0.f;
+	std::array<std::array<float, DIAL_RESOLUTION>, MAX_MODES> amplitudeDialTable = {};
 
 	std::array<SvfCoefficients, MAX_MODES> coefs = {};
 	StructureParams prevParams;
 
-	void buildLuts();
+	void buildTables();
 };
 
 
@@ -91,7 +92,6 @@ public:
 	void setSamplerate(int newSamplerate) override;
 	void setParams(const StructureParams& newParams) override;
 	void update() override;
-	float getActiveModesScaler() const override;
 	const SvfCoefficients& getCoefficients(int idx) const override;
 	
 protected:
@@ -110,7 +110,6 @@ protected:
 
 
 	int sr = 48000;
-	int activeModes = 0;
 
 	constexpr static float minFreq = 20.f;
 	float maxFreq = sr * 0.25f;

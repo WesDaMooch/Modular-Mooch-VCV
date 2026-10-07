@@ -122,20 +122,11 @@ void Exciter::trigger() {
     // Full pluck (0 - 0.33)
     // Damped pluck (0.33 - 0.5);
 
-
-
-    //const float fullPluckParam = mRemap(densityParam, 0.f, 0.33f);
-
-    grainGain = mRemap(densityParam, 0.f, 0.33f);
-
+    // Pluck
     float pluckGain = 2.f;
-
     if (densityParam > 0.33f)
-    {
-        float dampedPluckParam = mRemap(densityParam, 0.33f, 0.5f);
-        pluckGain = 1.f - dampedPluckParam;
-    }
-   
+        pluckGain = 1.f - mRemap(densityParam, 0.33f, 0.5f);
+    
     // Pluck first grain
     grain[0].active = true;
     grain[0].phase = 0.f;
@@ -143,14 +134,31 @@ void Exciter::trigger() {
     grain[0].texture = textureParam;
     grain[0].gain = pluckGain;
 
-    // TODO: is this a div by 0!
-    amplitudeADR.setParams(ADR::Params(
-        1.f,
-        0.3f,
-        0.5f,
-        0.5f
-    ));
 
+    // Granular bow / blow
+    grainGain = mRemap(densityParam, 0.f, 0.33f);   // Grains fade in
+
+    // Short attack, short decay 0 - 33
+    // short attack, long medium decay 33 - 50
+    // medium attack, short decay, low level, long release, 50 - 66
+    // long attack, long decay, high level, short release? 66 - 75
+    // 75 - 100 ? 
+    
+    float attack = 0.1f;
+    float decay = 0.7f;
+    float decayLevel = 0.5f;
+    float release = 0.5f;
+
+    if (densityParam <= 0.33f) {
+        //float param = mRemap(densityParam, 0.f, 0.33f);
+
+        decay = 0.5f;
+    }
+    else if (densityParam > 0.33f && densityParam <= 0.5f) {
+        decay = 2.75f;
+    }
+
+    amplitudeADR.setParams(ADR::Params(attack, decay, decayLevel, release));
     amplitudeADR.trigger();
 }
 
@@ -173,7 +181,7 @@ void Exciter::spawnGrain()
         if (!grain[channel].active)
         {
             // Set grain parameters
-            grain[channel].gain = grainGain * 0.25; // 1 / (MAX_CHANNEL * 0.5)
+            grain[channel].gain = grainGain * 0.25f; // 1 / (MAX_CHANNEL * 0.5)
 
             float shapeVariance = (rack::random::uniform() * 2.f - 1.f) * shapeVarianceAmount;
             grain[channel].texture = mClamp(textureParam + shapeVariance, 0.f, 1.f);
@@ -188,11 +196,12 @@ void Exciter::spawnGrain()
     }
 }
 
-void Exciter::process(ExciterParams& p) {
+void Exciter::process(float deltaTime, ExciterParams& p) {
     densityParam = p.density;
     textureParam = p.texture;
 
     // Spawn grains
+    //spawnPhase += deltaTime; 
     spawnPhase += spawnRate / sr; // todo use delta time
 
     if (spawnPhase >= 1.f)
@@ -251,6 +260,7 @@ void Exciter::process(ExciterParams& p) {
     // Velocity lowpass filter
     if (velocityParam != p.velocity) {
         velocityParam = mClamp(p.velocity, 0.f, 1.f);
+        // TODO: is this the best cutoff mapping...
         float cutoffHz = 20.f * std::pow(20000.f / 20.f, velocityParam);
         velocityFilter.setLowpass(cutoffHz);
         velocityParam = p.velocity;
