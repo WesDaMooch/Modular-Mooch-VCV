@@ -4,35 +4,13 @@
 #pragma once
 #include <algorithm>
 
-// TODO: no need for params 
 
 class ADR
 {
 public:
-    struct Params {
-        float attack = 0.01f;
-        float decay = 0.1f;
-        float decayLevel = 0.7f;
-        float release = 0.2f;
-
-        Params(
-            float attack = 0.01f,
-            float decay = 0.1f,
-            float decayLevel = 0.7f,
-            float release = 0.2f)
-            : attack(attack)
-            , decay(decay)
-            , decayLevel(decayLevel)
-            , release(release)
-        {
-        }
-    };
-
     ADR();
-
     void setSampleRate(int sampleRate);
-    void setParams(const Params& params);
-
+    void setParams(float attack = 0.01f, float decay = 0.1f, float decayLevel = 0.7f, float release = 0.2f);
     void trigger();
     float process();
     void reset();
@@ -46,8 +24,12 @@ private:
     };
 
     Stage stage = IDLE;
-    Params p;
 
-    int sr = 48000;
+    int sampleRate = 48000;
+
+    float attack = 0.01f;
+    float decay = 0.1f;
+    float decayLevel = 0.7f;
+    float release = 0.2f;
     float value = 0.f;
 };

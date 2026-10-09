@@ -2,10 +2,11 @@
 
 #include "plugin.hpp"
 #include <array>
-#include "Modal\common.hpp"
-#include "Modal\chamberlinSVF.hpp"
-#include "Modal\structures.hpp"
-#include "Modal\exciter.hpp"
+#include "Modal/common.hpp"
+#include "Modal/chamberlinSVF.hpp"
+#include "Modal/stringModel.hpp"
+#include "Modal/drumModel.hpp"
+#include "Modal/exciter.hpp"
 
 // Ideas
 // Multiple layers of modes
@@ -38,6 +39,9 @@
 // Pitch env, Amount and decay
 
 // use normalize q input 0?
+
+// imagine sliding a shaped envelope over the resonant filters, affecting the amps,
+// maybe this is what timbre or morph should be??
 
 struct Modal : Module
 {
@@ -86,19 +90,23 @@ struct Modal : Module
 	dsp::BooleanTrigger trigBoolean;
 	dsp::SchmittTrigger trigSchmitt;
 
-	SvfCoefficients coefs;
-	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
 	Exciter exciter;
 	ExciterParams exciterParams;
+
+	SvfCoefficients coefs;
+	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
 	std::array<StructureBase*, NUM_STRUCTURES> structures = {};
 	String string;
 	Drum2 drum;
 	StructureParams sParams;
 
-	bool soft = false;
+	bool muffle = false;
 	dsp::BooleanTrigger softBoolean;
+
+	float feedback = 0.f;
+	float feedbackParam = 0.f;
 
 	Modal() : structures{ &string, &drum }
 	{
@@ -114,7 +122,7 @@ struct Modal : Module
 		configParam(STRUCTURE_PARAM, 0.f, 1.f, 0.f, "Strutcure");
 		configParam(DECAY_PARAM, 0.0f, 1.0f, 0.5f, "Decay");
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
-		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Delay Time");
+		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Feedback");
 		configParam(DELAY_TYPE_PARAM, 0.0f, 1.0f, 0.0f, "Delay Type");
 		configButton(MUFFLE_PARAM, "Muffle");
 		// Inputs
@@ -201,7 +209,7 @@ struct Modal : Module
 		if (trigBoolean.process(gate)) 
 			exciter.trigger();
 
-		float excitation = exciter.get();
+		float excitation = exciter.get(); //+ feedback; // Add feedback into exciter
 
 		// Resonator
 		float pitch = (params[PITCH_PARAM].getValue() / 12.f) + inputs[PITCH_INPUT].getVoltage();
@@ -233,7 +241,7 @@ struct Modal : Module
 
 		// Solf button
 		if (softBoolean.process(params[MUFFLE_PARAM].getValue()))
-			soft ^= true;
+			muffle ^= true;
 
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
@@ -263,7 +271,7 @@ struct Modal : Module
 			// Odd polarity flip
 			// TODO: needs a little fade between flipped modes,
 			// to stop clicking
-			if (soft) {
+			if (muffle) {
 				// TODO: optimize %
 				if (i % 2 != 0)
 					modeOut *= -1;
@@ -274,6 +282,11 @@ struct Modal : Module
 
 		output *= 0.0625; // 1/16
 		output = std::tanh(output); // easy soft clipping
+
+		// TODO: look up coupling filter stuff
+		// Add back in when body is implemented
+		//feedback = output * 0.f; //params[DELAY_TIME_PARAM].getValue();
+
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
 		//outputs[AUDIO_OUTPUT].setVoltage(excitation);

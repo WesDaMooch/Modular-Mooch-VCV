@@ -25,6 +25,8 @@ void Exciter::buildTables() {
     //for (int i = 0; i < TABLE_LEN; i++)
     //    ampTable[0][i] = (i == 0) ? 1.f : 0.f;
 
+    // TODO: sine wave & triangle wave
+
 
     // Turkey, do kinda like could be used...
     tableIdx = 0;
@@ -158,7 +160,7 @@ void Exciter::trigger() {
         decay = 2.75f;
     }
 
-    amplitudeADR.setParams(ADR::Params(attack, decay, decayLevel, release));
+    amplitudeADR.setParams(attack, decay, decayLevel, release);
     amplitudeADR.trigger();
 }
 

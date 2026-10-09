@@ -4,9 +4,10 @@
 #include <random>
 #include <rack.hpp>
 #include "..\dsp\biquad.hpp"
-#include "..\dsp\adsr.hpp"
 #include "..\dsp\adr.hpp"
 #include "common.hpp"
+
+// TODO: fine tune grain env
 
 struct Grain
 {
@@ -49,6 +50,7 @@ protected:
 	float output = 0.f;
 
 	ADR amplitudeADR;
+
 	float spawnPhase = 0.f;
 	float spawnRate = 600.f;
 

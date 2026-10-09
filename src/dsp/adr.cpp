@@ -7,17 +7,16 @@ ADR::ADR() {
 
 
 void ADR::setSampleRate(int sampleRate) {
-    sr = sampleRate > 0 ? sampleRate : 1;
+    this->sampleRate = sampleRate > 0 ? sampleRate : 1;
 }
 
 
-void ADR::setParams(const Params& params) {
+void ADR::setParams(float attack, float decay, float decayLevel, float release) {
     const float EPSILON = 1e-6f;
-
-    this->p.attack      = std::max(p.attack, EPSILON);
-    this->p.decay       = std::max(p.decay, EPSILON);;
-    this->p.decayLevel  = std::max(p.decayLevel, EPSILON);;
-    this->p.release     = std::max(p.release, EPSILON);;
+    this->attack      = std::max(attack, EPSILON);
+    this->decay       = std::max(decay, EPSILON);
+    this->decayLevel  = std::max(0.f, std::min(decayLevel, 1.f));
+    this->release     = std::max(release, EPSILON);
 }
 
 
@@ -34,7 +33,7 @@ float ADR::process() {
         break;
 
     case ATTACK:
-        value += 1.f / (p.attack * sr);
+        value += 1.f / (attack * sampleRate);
 
         if (value >= 1.f) {
             value = 1.f;
@@ -43,16 +42,16 @@ float ADR::process() {
         break;
 
     case DECAY:
-        value -= (1.f - p.decayLevel) / (p.decay * sr);
+        value -= (1.f - decayLevel) / (decay * sampleRate);
 
-        if (value <= p.decayLevel) {
-            value = p.decayLevel;
+        if (value <= decayLevel) {
+            value = decayLevel;
             stage = RELEASE;
         }
         break;
 
     case RELEASE:
-        value -= p.decayLevel / (p.release * sr);
+        value -= decayLevel / (release * sampleRate);
 
         if (value <= 0.f) {
             value = 0.f;
@@ -63,6 +62,7 @@ float ADR::process() {
 
     return value;
 }
+
 
 void ADR::reset() {
     stage = IDLE;
