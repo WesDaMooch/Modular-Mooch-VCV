@@ -4,9 +4,11 @@
 #include <array>
 #include "Modal/common.hpp"
 #include "Modal/chamberlinSVF.hpp"
+#include "dsp/ramp.hpp"
+#include "Modal/exciter.hpp"
 #include "Modal/stringModel.hpp"
 #include "Modal/drumModel.hpp"
-#include "Modal/exciter.hpp"
+
 
 // Ideas
 // Multiple layers of modes
@@ -23,7 +25,7 @@
 // Randomness (see max msp book) on the amplitudes and q of modes
 
 // TODO:
-// Body resonitors
+// Body resonitors (shell)
 // https://ccrma.stanford.edu/~jos/jnmr/Body_Resonators.html
 // Guitar / violin 
 // Piano soundboard
@@ -38,10 +40,11 @@
 // Punch
 // Pitch env, Amount and decay
 
-// use normalize q input 0?
+// use normalize q input 0? meh
 
 // imagine sliding a shaped envelope over the resonant filters, affecting the amps,
 // maybe this is what timbre or morph should be??
+
 
 struct Modal : Module
 {
@@ -90,7 +93,6 @@ struct Modal : Module
 	dsp::BooleanTrigger trigBoolean;
 	dsp::SchmittTrigger trigSchmitt;
 
-
 	Exciter exciter;
 	ExciterParams exciterParams;
 
@@ -103,7 +105,8 @@ struct Modal : Module
 	StructureParams sParams;
 
 	bool muffle = false;
-	dsp::BooleanTrigger softBoolean;
+	dsp::BooleanTrigger muffleBoolean;
+	Ramp muffleRamp;
 
 	float feedback = 0.f;
 	float feedbackParam = 0.f;
@@ -136,6 +139,8 @@ struct Modal : Module
 		configInput(TIMBRE_INPUT, "Timbre CV");
 		// Outputs
 		configOutput(AUDIO_OUTPUT, "Output");
+
+		muffleRamp.setCurrentValue(1.f);
 
 		onSampleRateChange();
 	}
@@ -211,6 +216,7 @@ struct Modal : Module
 
 		float excitation = exciter.get(); //+ feedback; // Add feedback into exciter
 
+
 		// Resonator
 		float pitch = (params[PITCH_PARAM].getValue() / 12.f) + inputs[PITCH_INPUT].getVoltage();
 		float freq = dsp::FREQ_C4 * dsp::exp2_taylor5(pitch);
@@ -239,9 +245,18 @@ struct Modal : Module
 				structB->setParams(sParams);
 		}
 
-		// Solf button
-		if (softBoolean.process(params[MUFFLE_PARAM].getValue()))
+
+		// Muffle button
+		if (muffleBoolean.process(params[MUFFLE_PARAM].getValue())) {
 			muffle ^= true;
+			muffleRamp.setTarget(muffleRamp.getValue(), muffle ? -1.f : 1.f, 1000);
+		}
+
+		float polarity = muffle ? -1.f : 1.f;
+
+		if (!muffleRamp.isFinished())
+			polarity = muffleRamp.process();
+
 
 		float output = 0.0f;
 		for (int i = 0; i < MAX_MODES; i++)
@@ -267,15 +282,12 @@ struct Modal : Module
 			resonators[i].process(excitation);
 
 			float modeOut = resonators[i].bandpass();
+			// TODO: per mode soft clipping? tanh?
 
-			// Odd polarity flip
-			// TODO: needs a little fade between flipped modes,
-			// to stop clicking
-			if (muffle) {
-				// TODO: optimize %
-				if (i % 2 != 0)
-					modeOut *= -1;
-			}
+			// TODO: optimize %
+			// use polarity patterns not just odd even
+			if (i % 2 != 0)
+				modeOut *= polarity;
 
 			output += modeOut;
 		}
@@ -284,7 +296,7 @@ struct Modal : Module
 		output = std::tanh(output); // easy soft clipping
 
 		// TODO: look up coupling filter stuff
-		// Add back in when body is implemented
+		// Add feedback back in when body is implemented
 		//feedback = output * 0.f; //params[DELAY_TIME_PARAM].getValue();
 
 		output *= 10.f;	// Convert to voltage range (-10 to +10)

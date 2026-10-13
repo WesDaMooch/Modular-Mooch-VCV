@@ -82,9 +82,6 @@ const SvfCoefficients& String::getCoefficients(int idx) const {
 
 
 void String::buildTables() {
-	// TODO: high timbre quick damps only the fundimental mode,
-	// and as it increases damps the next 6 - 10?
-	// Use and exponetial curve
 	static constexpr float decaySlopeMax = 2.f;	// Damped / muted
 	static constexpr float decayDialStart = 0.2f;
 	static constexpr float decayDialEnd = 0.66f;

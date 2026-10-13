@@ -7,6 +7,8 @@
 #include <cmath>     
 
 
+// TODO: add reset
+
 class Biquad
 {
 public:
