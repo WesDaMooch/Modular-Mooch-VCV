@@ -6,23 +6,21 @@
 #include "baseModel.hpp"
 
 
-class String : public StructureBase {
+class String : public baseModel {
 public:
 	String();
-	void setSamplerate(int newSamplerate) override;
+	void setSamplerate(int samplerate) override;
 	void setParams(const StructureParams& newParams) override;
 	void update() override;
 	const SvfCoefficients& getCoefficients(int idx) const override;
 
 protected:
-	int sr = 48000;
+	int samplerate = 48000;
 
 	constexpr static float minFreq = 20.f;
-	float maxFreq = sr * 0.5f;
+	float maxFreq = samplerate * 0.5f;
 
 	float fundamentalFreq = 220.f;
-	float inharmonicity = 0.f;
-	float detune = 0.f;
 	float position = 0.0001f;
 	float baseDecay = 0.5f;
 

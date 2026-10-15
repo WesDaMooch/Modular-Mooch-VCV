@@ -5,10 +5,10 @@
 #include "baseModel.hpp"
 
 
-class Drum2 : public StructureBase {
+class Drum2 : public baseModel {
 public:
 	Drum2();
-	void setSamplerate(int newSamplerate) override;
+	void setSamplerate(int samplerate) override;
 	void setParams(const StructureParams& newParams) override;
 	void update() override;
 	const SvfCoefficients& getCoefficients(int idx) const override;
@@ -28,10 +28,10 @@ protected:
 	} };
 
 
-	int sr = 48000;
+	int samplerate = 48000;
 
 	constexpr static float minFreq = 20.f;
-	float maxFreq = sr * 0.25f;
+	float maxFreq = samplerate * 0.25f;
 
 	std::array<SvfCoefficients, MAX_MODES> coefs;
 	StructureParams prevParams;

@@ -7,9 +7,9 @@ String::String() {
 }
 
 
-void String::setSamplerate(int newSamplerate) {
-	sr = std::max(newSamplerate, 1);
-	maxFreq = sr * 0.5f;
+void String::setSamplerate(int samplerate) {
+	this->samplerate = std::max(samplerate, 1);
+	maxFreq = this->samplerate * 0.5f;
 }
 
 
@@ -18,8 +18,6 @@ void String::setParams(const StructureParams& newParams) {
 		return;
 
 	fundamentalFreq = mClamp(newParams.fundamentalFreq, minFreq, maxFreq);
-	inharmonicity = mMap(newParams.morph, -0.999f, 0.999f); // not used
-	detune = mMap(newParams.morph, -1.f, 1.f); // not used
 	position = mMap(newParams.position, 0.001f, 0.999f);
 	baseDecay = mMap(newParams.decay, 0.5f, 400.0f);
 
@@ -39,22 +37,11 @@ void String::setParams(const StructureParams& newParams) {
 
 void String::update() {
 
-	const float maxDetune = 5.f; // Hz, not used
 	for (int idx = 0; idx < MAX_MODES; idx++) {
 		int n = idx + 1;
 
-		// Pitch
-		//float f = fundamentalFreq * std::pow(static_cast<float>(n), 1.f + inharmonicity);
-
-		float activeDetune = detune * maxDetune * idx;
-
-		// TODO: this detune isnt very interesting
-		if (n % 2 != 0) {
-			// Odd
-			activeDetune *= -1;
-		}
-
-		float f = fundamentalFreq * n + activeDetune;
+		// TODO: morph 0 = ideal string, morph 1 = Euler-Bernoulli beam
+		float f = fundamentalFreq * n;
 
 		coefs[idx].freq = f;
 

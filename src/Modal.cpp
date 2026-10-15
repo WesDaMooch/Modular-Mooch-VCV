@@ -7,14 +7,25 @@
 #include "dsp/ramp.hpp"
 #include "Modal/exciter.hpp"
 #include "Modal/stringModel.hpp"
+#include "Modal/plateModel.hpp"
 #include "Modal/drumModel.hpp"
 
 
 // Ideas
-// Multiple layers of modes
+
+// Models
+// String x
+// 
+// Euler-Bernoulli beam
+// 
+// Plate
+// https://www.acs.psu.edu/drussell/Demos/rect-membrane/rect-mem.html
+// 
+// 
+// Drum (circular - bessel func)
 
 // Different filter types
-// Digital biquad
+// Digital biquad - RBJ band-pass biquad?
 // T Bridge (808-909)
 // Wasp filter 
 // Moog Ladder?
@@ -25,7 +36,7 @@
 // Randomness (see max msp book) on the amplitudes and q of modes
 
 // TODO:
-// Body resonitors (shell)
+// Body resonitors (shell) 
 // https://ccrma.stanford.edu/~jos/jnmr/Body_Resonators.html
 // Guitar / violin 
 // Piano soundboard
@@ -34,6 +45,8 @@
 // Piano hammer model https://ccrma.stanford.edu/~jos/jnmr/Pianos.html
 
 // Soft clip std::tanh for now
+// See for tanh with ceiling limiter https://github.com/odoare/MechanOdd
+// 
 // Old (0s Mackie desk style clipping?
 // Per harmonic soft clipping?
 
@@ -44,6 +57,8 @@
 
 // imagine sliding a shaped envelope over the resonant filters, affecting the amps,
 // maybe this is what timbre or morph should be??
+
+// Very small amount of slew on the pitch to stop filter click?
 
 
 struct Modal : Module
@@ -99,9 +114,10 @@ struct Modal : Module
 	SvfCoefficients coefs;
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
-	std::array<StructureBase*, NUM_STRUCTURES> structures = {};
+	std::array<baseModel*, NUM_STRUCTURES> structures = {};
 	String string;
-	Drum2 drum;
+	Plate plate;
+	//Drum2 drum;
 	StructureParams sParams;
 
 	bool muffle = false;
@@ -111,7 +127,7 @@ struct Modal : Module
 	float feedback = 0.f;
 	float feedbackParam = 0.f;
 
-	Modal() : structures{ &string, &drum }
+	Modal() : structures{ &string, &plate }
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
@@ -184,8 +200,8 @@ struct Modal : Module
 		size_t structAIdx = static_cast<size_t>(std::floor(structParam));
 		size_t structBIdx = static_cast<size_t>(std::ceil(structParam));
 
-		StructureBase* structA = structures[structAIdx];
-		StructureBase* structB = nullptr;
+		baseModel* structA = structures[structAIdx];
+		baseModel* structB = nullptr;
 
 		if (structAIdx != structBIdx) {
 			structB = structures[structBIdx];
@@ -200,6 +216,7 @@ struct Modal : Module
 		trigSchmitt.process(inputs[TRIG_INPUT].getVoltage(), 0.1f, 1.f);
 
 		bool gate = trig || trigSchmitt.isHigh();
+
 
 		// Set exciter params
 		// Velocity
@@ -292,7 +309,7 @@ struct Modal : Module
 			output += modeOut;
 		}
 
-		output *= 0.0625; // 1/16
+		output *= 0.0625; // 1/16, 1/MAX MODES
 		output = std::tanh(output); // easy soft clipping
 
 		// TODO: look up coupling filter stuff

@@ -28,11 +28,11 @@ struct StructureParams {
 };
 
 
-class StructureBase {
+class baseModel {
 public:
-	virtual ~StructureBase() = default;  
+	virtual ~baseModel() = default;  
 
-	virtual void setSamplerate(int newSamplerate) = 0;
+	virtual void setSamplerate(int samplerate) = 0;
 	virtual void setParams(const StructureParams& newParams) = 0;
 	virtual void update() = 0;
 	const virtual SvfCoefficients& getCoefficients(int idx) const = 0;

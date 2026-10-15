@@ -6,9 +6,9 @@ Drum2::Drum2() {
 }
 
 
-void Drum2::setSamplerate(int newSamplerate) {
-	sr = std::max(newSamplerate, 1);
-	maxFreq = sr * 0.25f;
+void Drum2::setSamplerate(int samplerate) {
+	this->samplerate = std::max(samplerate, 1);
+	maxFreq = this->samplerate * 0.25f;
 }
 
 
