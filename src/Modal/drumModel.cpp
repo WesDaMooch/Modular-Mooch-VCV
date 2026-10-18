@@ -1,18 +1,18 @@
 #include "drumModel.hpp"
 
 
-Drum2::Drum2() {
+DrumModel::DrumModel() {
 	update();
 }
 
 
-void Drum2::setSamplerate(int samplerate) {
+void DrumModel::setSamplerate(int samplerate) {
 	this->samplerate = std::max(samplerate, 1);
 	maxFreq = this->samplerate * 0.25f;
 }
 
 
-void Drum2::setParams(const StructureParams& newParams) {
+void DrumModel::setParams(const StructureParams& newParams) {
 	if (newParams == prevParams)
 		return;
 
@@ -27,7 +27,7 @@ void Drum2::setParams(const StructureParams& newParams) {
 }
 
 
-void Drum2::update() {
+void DrumModel::update() {
 	for (size_t idx = 0; idx < MAX_MODES; idx++)
 	{
 		const Root& r = roots[idx];
@@ -49,13 +49,13 @@ void Drum2::update() {
 }
 
 
-const SvfCoefficients& Drum2::getCoefficients(int idx)  const {
+const SvfCoefficients& DrumModel::getCoefficients(int idx)  const {
 	idx = mClamp(idx, 0, MAX_MODES - 1);
 	return coefs[idx];
 }
 
 
-float Drum2::bessel(int order, float x)
+float DrumModel::bessel(int order, float x)
 {
 	const float EPS = 1e-8;
 	const int MAX_TERMS = 20;

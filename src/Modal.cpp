@@ -7,9 +7,8 @@
 #include "dsp/ramp.hpp"
 #include "Modal/exciter.hpp"
 #include "Modal/stringModel.hpp"
-#include "Modal/plateModel.hpp"
+#include "Modal/rectModel.hpp"
 #include "Modal/drumModel.hpp"
-
 
 // Ideas
 
@@ -24,6 +23,16 @@
 // 
 // Drum (circular - bessel func)
 
+// I think the timbre dial (maybe rename tone) 
+// should act more like a material selector
+// full left only f0 -> 808/909 Kick/Tom thing -> dense stone 
+// -> wood -> metal -> glass -> full right lower harmonics are muted 
+
+// FILTERS
+// The conventional resonant filter in modal synthesis is designed by taking 
+// a two-pole complex resonator and digitizing it with the Impulse-Invariant Transform. 
+// 
+// TODO:
 // Different filter types
 // Digital biquad - RBJ band-pass biquad?
 // T Bridge (808-909)
@@ -55,10 +64,8 @@
 
 // use normalize q input 0? meh
 
-// imagine sliding a shaped envelope over the resonant filters, affecting the amps,
-// maybe this is what timbre or morph should be??
-
 // Very small amount of slew on the pitch to stop filter click?
+// or is this just the limiation of a biquad
 
 
 struct Modal : Module
@@ -114,9 +121,9 @@ struct Modal : Module
 	SvfCoefficients coefs;
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
-	std::array<baseModel*, NUM_STRUCTURES> structures = {};
-	String string;
-	Plate plate;
+	std::array<BaseModel*, NUM_STRUCTURES> structures = {};
+	StringModel string;
+	RectModel rectModel;
 	//Drum2 drum;
 	StructureParams sParams;
 
@@ -127,7 +134,7 @@ struct Modal : Module
 	float feedback = 0.f;
 	float feedbackParam = 0.f;
 
-	Modal() : structures{ &string, &plate }
+	Modal() : structures{ &string, &rectModel }
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
@@ -200,8 +207,8 @@ struct Modal : Module
 		size_t structAIdx = static_cast<size_t>(std::floor(structParam));
 		size_t structBIdx = static_cast<size_t>(std::ceil(structParam));
 
-		baseModel* structA = structures[structAIdx];
-		baseModel* structB = nullptr;
+		BaseModel* structA = structures[structAIdx];
+		BaseModel* structB = nullptr;
 
 		if (structAIdx != structBIdx) {
 			structB = structures[structBIdx];
@@ -241,19 +248,19 @@ struct Modal : Module
 
 		float morchCv = inputs[MORPH_INPUT].getVoltage() * 0.1f;
 		float morph = params[MORPH_PARAM].getValue() + morchCv;
-		sParams.morph = mClamp(morph, 0.0f, 1.0f);
+		sParams.morph = mClamp(morph, 0.f, 1.f);
 
 		float positionCv = inputs[POSITION_INPUT].getVoltage() * 0.1f;
 		float position = params[POSITION_PARAM].getValue() + positionCv;
-		sParams.position = mClamp(position, 0.0f, 1.0f);
+		sParams.position = mClamp(position, 0.f, 1.f);
 
 		float decayCv = inputs[DECAY_INPUT].getVoltage() * 0.1f;
 		float decay = params[DECAY_PARAM].getValue() + decayCv;
-		sParams.decay = mClamp(decay, 0.0f, 1.0f);
+		sParams.decay = mClamp(decay, 0.f, 1.f);
 
 		float timbreCv = inputs[TIMBRE_INPUT].getVoltage() * 0.1f;
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
-		sParams.timbre = mClamp(timbre, 0.0f, 1.0f);
+		sParams.timbre = mClamp(timbre, 0.f, 1.f);
 
 		if (structA != nullptr) {
 			structA->setParams(sParams);

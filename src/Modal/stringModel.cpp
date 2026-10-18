@@ -1,27 +1,43 @@
 #include "stringModel.hpp"
 
 
-String::String() {
+StringModel::StringModel() {
 	buildTables();
 	update();
 }
 
 
-void String::setSamplerate(int samplerate) {
+void StringModel::setSamplerate(int samplerate) {
 	this->samplerate = std::max(samplerate, 1);
 	maxFreq = this->samplerate * 0.5f;
 }
 
 
-void String::setParams(const StructureParams& newParams) {
-	if (newParams == prevParams)
+void StringModel::setParams(const StructureParams& params) {
+	if (params == prevParams)
 		return;
 
-	fundamentalFreq = mClamp(newParams.fundamentalFreq, minFreq, maxFreq);
-	position = mMap(newParams.position, 0.001f, 0.999f);
-	baseDecay = mMap(newParams.decay, 0.5f, 400.0f);
+	fundamentalFreq = mClamp(params.fundamentalFreq, minFreq, maxFreq);
 
-	float timbreDialPos = mMap(newParams.timbre, 0.f, float(DIAL_RESOLUTION - 1));
+	// stiffness 0 = ideal string
+	float morph = 0.f;
+	if (params.morph < 0.5f) {
+		morph = mRemap(params.morph, 0.f, 0.5f);
+		stiffness = mMap(morph, -0.06f, 0.f);
+	}
+	else {
+		morph = mRemap(params.morph, 0.5f, 1.f);
+		//morph = std::pow(morph, 3.f);	// dial feel shaping
+		stiffness = mMap(morph, 0.f, 2.f);
+	}
+
+	//stiffness = mMap(params.morph, -0.06f, 2.f);
+
+	position = mMap(params.position, 0.001f, 0.999f);
+
+	baseDecay = mMap(params.decay, 0.5f, 400.0f);
+
+	float timbreDialPos = mMap(params.timbre, 0.f, float(DIAL_RESOLUTION - 1));
 	amplitudeDialIdxA = static_cast<int>(std::floor(timbreDialPos));
 	amplitudeDialIdxB = std::min(amplitudeDialIdxA + 1, DIAL_RESOLUTION - 1);
 	amplitudeXFade = timbreDialPos - amplitudeDialIdxA;
@@ -30,45 +46,53 @@ void String::setParams(const StructureParams& newParams) {
 	decayDialIdxB = std::min(decayDialIdxA + 1, DIAL_RESOLUTION - 1);
 	decayXFade = timbreDialPos - decayDialIdxA;
 
-	prevParams = newParams;
+	prevParams = params;
 	update();
 }
 
 
-void String::update() {
+void StringModel::update() {
 
-	for (int idx = 0; idx < MAX_MODES; idx++) {
-		int n = idx + 1;
+	for (int i = 0; i < MAX_MODES; i++) {
+		const int n = i + 1;
 
 		// TODO: morph 0 = ideal string, morph 1 = Euler-Bernoulli beam
-		float f = fundamentalFreq * n;
+		// Maybe Euler-Bernoulli beam its own model
 
-		coefs[idx].freq = f;
+		// Stiff sting
+		// From Gillet, Émilie. 2015. Mutable Instruments Elements
+		float B = stiffness;
+		float f = fundamentalFreq * n * (1.f + (n - 1) * B);
+			
+		coefs[i].freq = f;
 
 		if (f < minFreq || f > maxFreq) {
-			coefs[idx].amplitude = 0.f;
+			coefs[i].amplitude = 0.f;
 			continue;
 		}
 
-		// Amplitude
+		// Amplitude // 
+		// Position can change after excitation, not realistic but sounds cool
+		// From Banks, Balázs et al. 2010. 'A Modal-Based Real-Time Piano Synthesizer'
 		float positionAmplitude = std::sin(M_PI * n * position);
-		float amplitude = mInterp(amplitudeXFade, amplitudeDialTable[idx][amplitudeDialIdxA], amplitudeDialTable[idx][amplitudeDialIdxB]);
-		coefs[idx].amplitude = amplitude * positionAmplitude;
+
+		float amplitude = mInterp(amplitudeXFade, amplitudeDialTable[i][amplitudeDialIdxA], amplitudeDialTable[i][amplitudeDialIdxB]);
+		coefs[i].amplitude = amplitude * positionAmplitude;
 
 		// Decay (Q)
 		float decay = mInterp(decayXFade, decayDialTable[decayDialIdxA], decayDialTable[decayDialIdxB]);
-		coefs[idx].q = baseDecay * std::pow(float(n), -decay);
+		coefs[i].q = baseDecay * std::pow(float(n), -decay);
 	}
 }
 
 
-const SvfCoefficients& String::getCoefficients(int idx) const {
+const SvfCoefficients& StringModel::getCoefficients(int idx) const {
 	idx = mClamp(idx, 0, MAX_MODES - 1);
 	return coefs[idx];
 }
 
 
-void String::buildTables() {
+void StringModel::buildTables() {
 	static constexpr float decaySlopeMax = 2.f;	// Damped / muted
 	static constexpr float decayDialStart = 0.2f;
 	static constexpr float decayDialEnd = 0.66f;

@@ -1,7 +1,9 @@
+// baseModel.hpp
+
 #pragma once
-#include "common.hpp"
 #include <array>
 #include <cmath>
+#include "common.hpp"
 
 static constexpr int NUM_STRUCTURES = 2;
 
@@ -27,10 +29,10 @@ struct StructureParams {
 	}
 };
 
-
-class baseModel {
+// TODO: rename BaseModel
+class BaseModel {
 public:
-	virtual ~baseModel() = default;  
+	virtual ~BaseModel() = default;  
 
 	virtual void setSamplerate(int samplerate) = 0;
 	virtual void setParams(const StructureParams& newParams) = 0;

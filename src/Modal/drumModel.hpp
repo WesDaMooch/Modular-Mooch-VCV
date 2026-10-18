@@ -5,9 +5,9 @@
 #include "baseModel.hpp"
 
 
-class Drum2 : public baseModel {
+class DrumModel : public BaseModel {
 public:
-	Drum2();
+	DrumModel();
 	void setSamplerate(int samplerate) override;
 	void setParams(const StructureParams& newParams) override;
 	void update() override;

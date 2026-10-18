@@ -6,11 +6,12 @@
 #include "baseModel.hpp"
 
 
-class String : public baseModel {
+// TODO: Rename StringModel
+class StringModel : public BaseModel {
 public:
-	String();
+	StringModel();
 	void setSamplerate(int samplerate) override;
-	void setParams(const StructureParams& newParams) override;
+	void setParams(const StructureParams& params) override;
 	void update() override;
 	const SvfCoefficients& getCoefficients(int idx) const override;
 
@@ -21,7 +22,8 @@ protected:
 	float maxFreq = samplerate * 0.5f;
 
 	float fundamentalFreq = 220.f;
-	float position = 0.0001f;
+	float stiffness = 0.f;
+	float position = 0.5f;
 	float baseDecay = 0.5f;
 
 	int decayDialIdxA = 0;
