@@ -4,7 +4,7 @@
 // Granular exciter
 Exciter::Exciter() {
     setSampleRate(sr);
-    buildTables();
+    buildLuts();
 
     velocityFilter.setLowpass(sr * 0.49f); // TODO: set a good default value
 }
@@ -15,10 +15,9 @@ void Exciter::setSampleRate(int newSampleRate) {
     amplitudeADR.setSampleRate(sr);
 }
 
-void Exciter::buildTables() {
+void Exciter::buildLuts() {
     // Exciter tables
-    size_t tableIdx = 0;
-    float peak = 0.f;
+
 
     // Impulse table 
     // TODO: Dont like the impulse, maybe replace with decaying impulse train?
@@ -28,43 +27,37 @@ void Exciter::buildTables() {
     // TODO: sine wave & triangle wave
 
 
-    // Turkey, do kinda like could be used...
-    tableIdx = 0;
-    peak = 0.f;
+    // Turkey window
+    size_t tableIdx = 0;
+    float peak = 0.f;
 
     const float alpha = 0.1f; // 0 = rectangular, 1 = Hann
 
-    for (int i = 0; i < TABLE_LEN; i++)
-    {
+    for (int i = 0; i < TABLE_LEN; i++) {
+        float value = 0.f;
         float x = static_cast<float>(i) / (TABLE_LEN - 1);
 
-        float window = 0.0f;
-
-        if (x < alpha * 0.5f)
-        {
+        if (x < alpha * 0.5f) {
             // Rising cosine taper
-            window = 0.5f * (1.f + cosf(M_PI * (2.f * x / alpha - 1.f)));
+            value = 0.5f * (1.f + std::cosf(M_PI * (2.f * x / alpha - 1.f)));
         }
-        else if (x <= 1.0f - alpha * 0.5f)
-        {
+        else if (x <= 1.f - alpha * 0.5f) {
             // Flat section
-            window = 1.0f;
+            value = 1.0f;
         }
-        else
-        {
+        else {
             // Falling cosine taper
-            window = 0.5f * (1.0f + cosf(M_PI * (2.0f * x / alpha - 2.0f / alpha + 1.0f)));
+            value = 0.5f * (1.f + std::cosf(M_PI * (2.f * x / alpha - 2.f / alpha + 1.f)));
         }
 
-        table[tableIdx][i] = window;
-
-        peak = std::max(peak, fabsf(table[0][i]));
+        table[tableIdx][i] = value;
+        peak = std::max(peak, std::fabsf(value));
     }
     normaliseAmplitudeEnvelope(tableIdx, peak);
 
 
     // Raise cosine pulse
-    tableIdx++;
+    tableIdx = 1;
     peak = 0.f;
 
     const float T = TABLE_LEN / 8.f;
@@ -72,19 +65,16 @@ void Exciter::buildTables() {
     const float leftZeroCrossing = 2.f;    // Start point
     const float rightZeroCrossing = 5.f;   // End point
 
-    for (int i = 0; i < TABLE_LEN; i++)
-    {
+    for (int i = 0; i < TABLE_LEN; i++) {
+        float value = 0.f;
+
         // Asymmetric time range
         float t = -leftZeroCrossing * T + (leftZeroCrossing + rightZeroCrossing) * T * static_cast<float>(i) / (TABLE_LEN - 1);
-
         float x = t / T;
 
         float denominator = 1.f - std::powf(2.f * beta * x, 2.f);
 
-        float value = 0.f;
-
-        if (std::fabsf(denominator) > 1e-12f)
-        {
+        if (std::fabsf(denominator) > 1e-12f) {
             float sinc = 1.f;
 
             if (std::fabsf(x) > 1e-12f)
@@ -92,30 +82,40 @@ void Exciter::buildTables() {
 
             value = sinc * std::cosf(M_PI * beta * x) / denominator;
         }
-        else
-        {
+        else {
             value = (M_PI * 0.25f) * (std::sinf(M_PI / (2.f * beta)) / (M_PI / (2.f * beta)));
         }
 
         table[tableIdx][i] = value;
-
-        peak = std::max(peak, fabsf(value));
+        peak = std::max(peak, std::fabsf(value));
     }
-
     normaliseAmplitudeEnvelope(tableIdx, peak);
 
 
-    // Hann pulse
-    tableIdx++;
+    // Triangle window
+    tableIdx = 2;
+    peak = 0.f;
+
+    for (int i = 0; i < TABLE_LEN; i++) {
+        float phase = static_cast<float>(i) / (TABLE_LEN - 1);
+        float value = 1.f - std::fabsf(2.f * phase - 1.f);
+
+        table[tableIdx][i] = value;
+        peak = std::max(peak, std::fabsf(value));
+    }
+    normaliseAmplitudeEnvelope(tableIdx, peak);
+
+
+    // Hann window
+    tableIdx = 3;
     peak = 0.f;
 
     for (int i = 0; i < TABLE_LEN; i++)
     {
-        float hann = 0.5f * (1.f - std::cosf(2.f * M_PI * i / (TABLE_LEN - 1)));
-        table[tableIdx][i] = hann;
-        peak = std::max(peak, std::fabsf(table[tableIdx][i]));
+        float value = 0.5f * (1.f - std::cosf(2.f * M_PI * i / (TABLE_LEN - 1)));
+        table[tableIdx][i] = value;
+        peak = std::max(peak, std::fabsf(value));
     }
-
     normaliseAmplitudeEnvelope(tableIdx, peak);
 }
 

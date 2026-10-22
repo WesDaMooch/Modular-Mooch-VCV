@@ -6,7 +6,6 @@
 #include "baseModel.hpp"
 
 
-// TODO: Rename StringModel
 class StringModel : public BaseModel {
 public:
 	StringModel();

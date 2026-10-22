@@ -7,6 +7,7 @@
 #include "dsp/ramp.hpp"
 #include "Modal/exciter.hpp"
 #include "Modal/stringModel.hpp"
+#include "Modal/beamModel.hpp"
 #include "Modal/rectModel.hpp"
 #include "Modal/drumModel.hpp"
 
@@ -82,8 +83,8 @@ struct Modal : Module
 		STRUCTURE_PARAM,
 		DECAY_PARAM,
 		TIMBRE_PARAM,
-		DELAY_TIME_PARAM,
-		DELAY_TYPE_PARAM,
+		PUNCH_AMOUNT_PARAM,
+		PUNCH_DECAY_PARAM,
 		MUFFLE_PARAM,
 		PARAMS_LEN
 	};
@@ -122,8 +123,9 @@ struct Modal : Module
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
 	std::array<BaseModel*, NUM_STRUCTURES> structures = {};
-	StringModel string;
-	RectModel rectModel;
+	StringModel stringModel;
+	BeamModel beamModel;
+	//RectModel rectModel;
 	//Drum2 drum;
 	StructureParams sParams;
 
@@ -134,7 +136,7 @@ struct Modal : Module
 	float feedback = 0.f;
 	float feedbackParam = 0.f;
 
-	Modal() : structures{ &string, &rectModel }
+	Modal() : structures{ &stringModel, &beamModel }
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
@@ -148,8 +150,8 @@ struct Modal : Module
 		configParam(STRUCTURE_PARAM, 0.f, 1.f, 0.f, "Strutcure");
 		configParam(DECAY_PARAM, 0.0f, 1.0f, 0.5f, "Decay");
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
-		configParam(DELAY_TIME_PARAM, 0.0f, 1.0f, 0.0f, "Feedback");
-		configParam(DELAY_TYPE_PARAM, 0.0f, 1.0f, 0.0f, "Delay Type");
+		configParam(PUNCH_AMOUNT_PARAM, 0.0f, 1.0f, 0.0f, "Punch Amount");
+		configParam(PUNCH_DECAY_PARAM, 0.0f, 1.0f, 0.0f, "Punch Decay");
 		configButton(MUFFLE_PARAM, "Muffle");
 		// Inputs
 		configInput(TRIG_INPUT, "Trigger");
@@ -321,7 +323,7 @@ struct Modal : Module
 
 		// TODO: look up coupling filter stuff
 		// Add feedback back in when body is implemented
-		//feedback = output * 0.f; //params[DELAY_TIME_PARAM].getValue();
+		//feedback = output * 0.f; //params[FEEDBACK].getValue();
 
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
@@ -352,8 +354,8 @@ struct ModalModuleWidget : ModuleWidget
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 80.0f)), module, Modal::DECAY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 80.0f)), module, Modal::STRUCTURE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 20.0f)), module, Modal::DELAY_TIME_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 40.0f)), module, Modal::DELAY_TYPE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 20.0f)), module, Modal::PUNCH_AMOUNT_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 40.0f)), module, Modal::PUNCH_DECAY_PARAM));
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(30.0f, 60.0f)), module, Modal::MUFFLE_PARAM));
 
 

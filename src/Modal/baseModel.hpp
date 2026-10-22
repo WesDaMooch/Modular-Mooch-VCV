@@ -41,4 +41,9 @@ public:
 
 	// TODO: Implement this cloning thing?
 	//virtual std::unique_ptr<StructureBase> clone() const = 0;
+
+protected:
+	// TODO: tune max and min q
+	static constexpr float MIN_Q = 0.00001f;
+	static constexpr float MAX_Q = 500.f;
 };

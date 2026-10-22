@@ -30,7 +30,7 @@ class Exciter
 {
 public:
 	Exciter();
-	void buildTables();
+	void buildLuts();
 	void setSampleRate(int newSampleRate);
 	void trigger();
 	void process(float deltaTime, ExciterParams& p);
@@ -40,7 +40,7 @@ protected:
 	void spawnGrain();
 
 	static constexpr int MAX_CHANNELS = 8;
-	static constexpr int NUM_TABLES = 3;
+	static constexpr int NUM_TABLES = 4;
 	static constexpr int TABLE_LEN = 1024;
 
 	std::array<Grain, MAX_CHANNELS> grain = {};

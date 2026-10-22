@@ -1,5 +1,6 @@
 // Rect Model
 
+// TODO: this whole model
 
 #pragma once
 #include <cmath>

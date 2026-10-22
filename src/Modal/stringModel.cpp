@@ -70,13 +70,13 @@ void StringModel::update() {
 		// From Gillet, Émilie. 2015. Mutable Instruments Elements
 		float B = stiffness;
 		float f = fundamentalFreq * n * (1.f + (n - 1) * B);
-			
-		coefs[i].freq = f;
 
 		if (f < minFreq || f > maxFreq) {
 			coefs[i].amplitude = 0.f;
 			continue;
 		}
+
+		coefs[i].freq = f;
 
 		// Amplitude // 
 		// Position can change after excitation, not realistic but sounds cool
@@ -88,12 +88,12 @@ void StringModel::update() {
 		//float amplitude = mInterp(amplitudeXFade, amplitudeDialTable[i][amplitudeDialIdxA], amplitudeDialTable[i][amplitudeDialIdxB]);
 		//coefs[i].amplitude = amplitude * positionAmplitude;
 
-		// Decay (Q)
+		// Decay (Q) //
 		// From Modalys
 		float freqRatio = f / 1000.f;
 		float loss = constLoss + freqLoss * freqRatio * freqRatio;
 		float q = float(M_PI) * f / loss;
-		coefs[i].q = mClamp(q, 0.00001f, 500.f); // TODO: lower min q
+		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
 
 		//float decay = mInterp(decayXFade, decayDialTable[decayDialIdxA], decayDialTable[decayDialIdxB]);
 		//coefs[i].q = baseDecay * std::pow(float(n), -decay);
