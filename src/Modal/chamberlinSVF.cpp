@@ -13,7 +13,7 @@ void ChamberlinSVF::setCoefficients(SvfCoefficients& c)
 
 	Q = std::max(c.q, 1e-6f);
 
-	amplitude = mClamp(c.amplitude, 0.0f, 1.0f);
+	amplitude = mClamp(c.amplitude, -1.f, 1.f);
 }
 
 

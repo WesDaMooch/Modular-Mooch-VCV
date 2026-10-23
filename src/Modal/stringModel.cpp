@@ -68,8 +68,10 @@ void StringModel::update() {
 
 		// Stiff sting
 		// From Gillet, Émilie. 2015. Mutable Instruments Elements
-		float B = stiffness;
-		float f = fundamentalFreq * n * (1.f + (n - 1) * B);
+		//float B = stiffness;
+		//float f = fundamentalFreq * n * (1.f + (n - 1) * B);
+
+		float f = fundamentalFreq * n;
 
 		if (f < minFreq || f > maxFreq) {
 			coefs[i].amplitude = 0.f;
