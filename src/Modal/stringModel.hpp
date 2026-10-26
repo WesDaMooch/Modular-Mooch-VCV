@@ -23,11 +23,10 @@ protected:
 	float fundamentalFreq = 220.f;
 	float stiffness = 0.f;
 	float position = 0.5f;
-	//float baseQ = 0.5f;
-	//float highModeDamping = 0.f;
 	float constLoss = 0.f;
 	float freqLoss = 0.f;
 
+	// TODO: Not used //
 	int decayDialIdxA = 0;
 	int decayDialIdxB = 0;
 	float decayXFade = 0.f;

@@ -3,7 +3,7 @@
 #pragma once
 #include <algorithm>
 
-static constexpr int MAX_MODES = 16;
+static constexpr int MAX_MODES = 24; //16
 static constexpr int DIAL_RESOLUTION = 512;
 
 struct SvfCoefficients {

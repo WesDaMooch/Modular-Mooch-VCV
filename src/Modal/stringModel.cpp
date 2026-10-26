@@ -31,7 +31,7 @@ void StringModel::setParams(const StructureParams& params) {
 		stiffness = mMap(morph, 0.f, 2.f);
 	}
 
-	position = mMap(params.position, 0.001f, 0.999f);
+	position = mMap(params.position, 0.02f, 0.98f);
 
 	// TODO: needs a bit of tuning but its nice
 	float decay = 1.f - params.decay;
@@ -62,9 +62,6 @@ void StringModel::update() {
 
 	for (int i = 0; i < MAX_MODES; i++) {
 		const int n = i + 1;
-
-		// TODO: morph 0 = ideal string, morph 1 = Euler-Bernoulli beam
-		// Maybe Euler-Bernoulli beam its own model
 
 		// Stiff sting
 		// From Gillet, Émilie. 2015. Mutable Instruments Elements

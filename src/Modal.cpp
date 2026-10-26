@@ -6,6 +6,7 @@
 #include "Modal/chamberlinSVF.hpp"
 #include "dsp/ramp.hpp"
 #include "Modal/exciter.hpp"
+#include "Modal/waveformModel.hpp"
 #include "Modal/stringModel.hpp"
 #include "Modal/beamModel.hpp"
 #include "Modal/rectModel.hpp"
@@ -123,6 +124,7 @@ struct Modal : Module
 	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
 	std::array<BaseModel*, NUM_STRUCTURES> structures = {};
+	WaveformModel waveformModel;
 	StringModel stringModel;
 	BeamModel beamModel;
 	//RectModel rectModel;
@@ -136,7 +138,7 @@ struct Modal : Module
 	float feedback = 0.f;
 	float feedbackParam = 0.f;
 
-	Modal() : structures{ &stringModel, &beamModel }
+	Modal() : structures{ &waveformModel, &stringModel, &beamModel }
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
