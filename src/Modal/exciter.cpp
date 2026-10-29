@@ -10,7 +10,7 @@ Exciter::Exciter() {
 }
 
 void Exciter::setSampleRate(int newSampleRate) {
-    sr = mClamp(newSampleRate, 20, static_cast<int>(sr * 0.5f));
+    sr = std::max(newSampleRate, 1);
     velocityFilter.setSampleRate(sr);
     amplitudeADR.setSampleRate(sr);
 }
@@ -26,11 +26,12 @@ void Exciter::buildLuts() {
 
     // TODO: sine wave & triangle wave
 
-
-    // Turkey window
     size_t tableIdx = 0;
     float peak = 0.f;
 
+
+    // Turkey window
+    /*
     const float alpha = 0.1f; // 0 = rectangular, 1 = Hann
 
     for (int i = 0; i < TABLE_LEN; i++) {
@@ -54,10 +55,10 @@ void Exciter::buildLuts() {
         peak = std::max(peak, std::fabsf(value));
     }
     normaliseAmplitudeEnvelope(tableIdx, peak);
-
+    */
 
     // Raise cosine pulse
-    tableIdx = 1;
+    tableIdx = 0;
     peak = 0.f;
 
     const float T = TABLE_LEN / 8.f;
@@ -93,7 +94,8 @@ void Exciter::buildLuts() {
 
 
     // Triangle window
-    tableIdx = 2;
+    /*
+    tableIdx = 1;
     peak = 0.f;
 
     for (int i = 0; i < TABLE_LEN; i++) {
@@ -104,10 +106,11 @@ void Exciter::buildLuts() {
         peak = std::max(peak, std::fabsf(value));
     }
     normaliseAmplitudeEnvelope(tableIdx, peak);
+    */
 
 
     // Hann window
-    tableIdx = 3;
+    tableIdx = 1;
     peak = 0.f;
 
     for (int i = 0; i < TABLE_LEN; i++)
@@ -132,7 +135,7 @@ void Exciter::trigger() {
     // Pluck first grain
     grain[0].active = true;
     grain[0].phase = 0.f;
-    grain[0].speed = 8.f;
+    grain[0].speed = 1.f;
     grain[0].texture = textureParam;
     grain[0].gain = pluckGain;
 

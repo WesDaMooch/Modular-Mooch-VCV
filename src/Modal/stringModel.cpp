@@ -60,6 +60,8 @@ void StringModel::setParams(const StructureParams& params) {
 
 void StringModel::update() {
 
+	float energy = 0.f;
+
 	for (int i = 0; i < MAX_MODES; i++) {
 		const int n = i + 1;
 
@@ -82,10 +84,7 @@ void StringModel::update() {
 		// From Banks, Balázs et al. 2010. 'A Modal-Based Real-Time Piano Synthesizer'
 		float positionAmplitude = std::sin(M_PI * n * position);
 		coefs[i].amplitude = positionAmplitude;
-
-
-		//float amplitude = mInterp(amplitudeXFade, amplitudeDialTable[i][amplitudeDialIdxA], amplitudeDialTable[i][amplitudeDialIdxB]);
-		//coefs[i].amplitude = amplitude * positionAmplitude;
+		energy += positionAmplitude * positionAmplitude;
 
 		// Decay (Q) //
 		// From Modalys
@@ -93,9 +92,13 @@ void StringModel::update() {
 		float loss = constLoss + freqLoss * freqRatio * freqRatio;
 		float q = float(M_PI) * f / loss;
 		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
+	}
 
-		//float decay = mInterp(decayXFade, decayDialTable[decayDialIdxA], decayDialTable[decayDialIdxB]);
-		//coefs[i].q = baseDecay * std::pow(float(n), -decay);
+	// Normalise energy
+	float gain = 1.f / std::sqrt(std::max(energy, 1e-12f));
+
+	for (int i = 0; i < MAX_MODES; ++i) {
+		coefs[i].amplitude *= gain;
 	}
 }
 

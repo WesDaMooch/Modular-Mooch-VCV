@@ -5,7 +5,7 @@
 #include <cmath>
 #include "common.hpp"
 
-static constexpr int NUM_STRUCTURES = 3;
+static constexpr int NUM_STRUCTURES = 2;
 
 // TODO: clamp freq range on all models??
 
@@ -45,5 +45,5 @@ public:
 protected:
 	// TODO: tune max and min q
 	static constexpr float MIN_Q = 0.00001f;
-	static constexpr float MAX_Q = 500.f;
+	static constexpr float MAX_Q = 1000.f;
 };

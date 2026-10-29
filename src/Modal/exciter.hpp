@@ -39,9 +39,9 @@ public:
 protected:
 	void spawnGrain();
 
-	static constexpr int MAX_CHANNELS = 8;
-	static constexpr int NUM_TABLES = 4;
-	static constexpr int TABLE_LEN = 1024;
+	static constexpr int MAX_CHANNELS = 8; // are all of these used
+	static constexpr int NUM_TABLES = 2;
+	static constexpr int TABLE_LEN = 256;
 
 	std::array<Grain, MAX_CHANNELS> grain = {};
 	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> table = {};

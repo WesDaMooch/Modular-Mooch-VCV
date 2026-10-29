@@ -12,6 +12,16 @@
 #include "Modal/rectModel.hpp"
 #include "Modal/drumModel.hpp"
 
+// Main TODOS:
+// Redo reso filters:
+// Use a biquad? the svf used in mutable instruments?
+// Direct form I or II with unity gain???
+
+// Work on the exciter:
+// Find exicter shapes that dont click (slower atk & dec)
+// Implement the Air/Bow knob that changes the granular engine rate and stuff
+
+
 // Ideas
 
 // Models
@@ -126,7 +136,7 @@ struct Modal : Module
 	std::array<BaseModel*, NUM_STRUCTURES> structures = {};
 	WaveformModel waveformModel;
 	StringModel stringModel;
-	BeamModel beamModel;
+	//BeamModel beamModel;
 	//RectModel rectModel;
 	//Drum2 drum;
 	StructureParams sParams;
@@ -138,7 +148,7 @@ struct Modal : Module
 	float feedback = 0.f;
 	float feedbackParam = 0.f;
 
-	Modal() : structures{ &waveformModel, &stringModel, &beamModel }
+	Modal() : structures{ &waveformModel, &stringModel }
 	{
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
@@ -191,17 +201,20 @@ struct Modal : Module
 			resonator.reset();
 	}
 	
+
 	json_t* dataToJson() override 
 	{
 		json_t* rootJ = json_object();
 		return rootJ;
 	}
 	
+
 	void dataFromJson(json_t* rootJ) override 
 	{
 
 	}
 	
+
 	void process(const ProcessArgs& args) override
 	{
 		// Get structure
@@ -214,9 +227,9 @@ struct Modal : Module
 		BaseModel* structA = structures[structAIdx];
 		BaseModel* structB = nullptr;
 
-		if (structAIdx != structBIdx) {
+		if (structAIdx != structBIdx)
 			structB = structures[structBIdx];
-		}
+		
 
 		float structCrossfade = structParam - static_cast<float>(structAIdx);
 
@@ -312,10 +325,10 @@ struct Modal : Module
 			float modeOut = resonators[i].bandpass();
 			// TODO: per mode soft clipping? tanh?
 
-			// TODO: optimize %
+			// TODO: remove
 			// use polarity patterns not just odd even
-			if (i % 2 != 0)
-				modeOut *= polarity;
+			//if (i % 2 != 0)
+			//	modeOut *= polarity;
 
 			output += modeOut;
 		}

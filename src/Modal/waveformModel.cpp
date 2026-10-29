@@ -12,13 +12,15 @@ void WaveformModel::buildRoots() {
 		const int n = i + 1;
 
 		// Sawtooth
-		waveformAmplitude[0][i] = 1 / float(n); //(n % 2 == 1 ? 1.f : -1.f) / float(n);
+		//float sawToothPatial = 1.f / float(n);
+		waveformAmplitude[0][i] = 1.f / float(n); //(n > 1) ? -sawToothPatial : sawToothPatial; //(n % 2 == 1 ? 1.f : -1.f) / float(n); // 1.f / float(n)
 
 		// Squarewave
 		waveformAmplitude[1][i] = (n % 2 == 1) ? 1.f / float(n) : 0.f;
 
 	}
 }
+
 
 void WaveformModel::setSamplerate(int samplerate) {
 	this->samplerate = std::max(samplerate, 1);
@@ -43,6 +45,7 @@ void WaveformModel::setParams(const StructureParams& params) {
 	freqLoss = mMap(timbre, 0.f, 1000.f);
 
 	// Position //
+	// Morph between different waveform partials
 	float waveformSelect = mMap(params.position, 0.f, float(NUM_WAVEFORMS - 1));
 	waveformIdxA = static_cast<int>(std::floor(waveformSelect));
 	waveformIdxB = std::min(waveformIdxA + 1, NUM_WAVEFORMS - 1);
@@ -54,6 +57,8 @@ void WaveformModel::setParams(const StructureParams& params) {
 
 
 void WaveformModel::update() {
+
+	float energy = 0.f;
 
 	for (int i = 0; i < MAX_MODES; i++) {
 		const int n = i + 1;
@@ -68,13 +73,12 @@ void WaveformModel::update() {
 		coefs[i].freq = f;
 
 		// Amplitude // 
-		float a = waveformAmplitude[waveformIdxA][i];
-		float b = waveformAmplitude[waveformIdxB][i];
+		float waveformA = waveformAmplitude[waveformIdxA][i];
+		float wavefromB = waveformAmplitude[waveformIdxB][i];
 
-		coefs[i].amplitude = mInterp(waveformXFade, a, b); //*pwmAmplitude;
-
-		// Position can change after excitation, not realistic but sounds cool
-		// PWM?
+		float a = mInterp(waveformXFade, waveformA, wavefromB);
+		coefs[i].amplitude = a;
+		energy += a * a;
 
 		// Decay (Q) //
 		// From Modalys
@@ -82,6 +86,13 @@ void WaveformModel::update() {
 		float loss = constLoss + freqLoss * freqRatio * freqRatio;
 		float q = float(M_PI) * f / loss;
 		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
+	}
+
+	// Normalise energy
+	float gain = 1.f / std::sqrt(std::max(energy, 1e-12f));
+
+	for (int i = 0; i < MAX_MODES; ++i) {
+		coefs[i].amplitude *= gain;
 	}
 }
 
