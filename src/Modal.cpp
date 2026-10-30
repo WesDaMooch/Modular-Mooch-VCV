@@ -2,6 +2,7 @@
 
 #include "plugin.hpp"
 #include <array>
+#include "Modal/voice.hpp"
 #include "Modal/common.hpp"
 #include "Modal/chamberlinSVF.hpp"
 #include "dsp/ramp.hpp"
@@ -292,14 +293,16 @@ struct Modal : Module
 			muffle ^= true;
 			muffleRamp.setTarget(muffleRamp.getValue(), muffle ? -1.f : 1.f, 1000);
 		}
-
+		// Unused muffle button
+		/*
 		float polarity = muffle ? -1.f : 1.f;
 
 		if (!muffleRamp.isFinished())
 			polarity = muffleRamp.process();
+		*/
 
 
-		float output = 0.0f;
+		float output = 0.f;
 		for (int i = 0; i < MAX_MODES; i++)
 		{
 			// Structure
