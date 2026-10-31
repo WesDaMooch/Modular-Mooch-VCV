@@ -125,18 +125,22 @@ struct Modal : Module
 
 	int srate = 48000; 
 
+	std::array<Voice, NUM_VOICES> voices;
+	int latestVoiceIdx = 0;
+
 	dsp::BooleanTrigger trigBoolean;
 	dsp::SchmittTrigger trigSchmitt;
 
-	Exciter exciter;
+	// Old 
+	//Exciter exciter;
 	ExciterParams exciterParams;
 
-	SvfCoefficients coefs;
-	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
+	//SvfCoefficients coefs;
+	//std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 
-	std::array<BaseModel*, NUM_STRUCTURES> structures = {};
-	WaveformModel waveformModel;
-	StringModel stringModel;
+	//std::array<BaseModel*, NUM_STRUCTURES> structures = {};
+	//WaveformModel waveformModel;
+	//StringModel stringModel;
 	//BeamModel beamModel;
 	//RectModel rectModel;
 	//Drum2 drum;
@@ -149,8 +153,7 @@ struct Modal : Module
 	float feedback = 0.f;
 	float feedbackParam = 0.f;
 
-	Modal() : structures{ &waveformModel, &stringModel }
-	{
+	Modal() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		// Parameters
 		configButton(TRIG_PARAM, "Trigger");
@@ -187,19 +190,14 @@ struct Modal : Module
 	{
 		srate = APP->engine->getSampleRate();
 
-		for (auto* structure : structures) {
-			if (structure != nullptr)
-				structure->setSamplerate(srate);
-		}
-
-		for (auto& resonator : resonators)
-			resonator.setSamplerate(srate);
+		for (auto& voice : voices)
+			voice.setSampleRate(srate);
 	}
 
 	void onReset(const ResetEvent& e) override 
 	{
-		for (auto& resonator : resonators)
-			resonator.reset();
+		//for (auto& resonator : resonators)
+		//	resonator.reset();
 	}
 	
 
@@ -215,49 +213,41 @@ struct Modal : Module
 
 	}
 	
+	int allocateVoice() {
+		// Find an inactive voice
+		for (int i = 0; i < NUM_VOICES; i++) {
+			if (!voices[i].isActive())
+				return i;
+		}
 
+		// If all voices are busy steal the quietest
+		int quietestVoice = 0;
+		float lowestLevel = voices[0].getEnvelopeLevel();
+
+		for (int i = 1; i < NUM_VOICES; i++) {
+			float level = voices[i].getEnvelopeLevel();
+
+			if (level < lowestLevel) {
+				lowestLevel = level;
+				quietestVoice = i;
+			}
+		}
+
+		return quietestVoice;
+	}
+	
 	void process(const ProcessArgs& args) override
 	{
-		// Get structure
-		const float MAX_STRUCTURE = static_cast<float>(NUM_STRUCTURES - 1);
-		float structParam = mClamp(params[STRUCTURE_PARAM].getValue() * MAX_STRUCTURE, 0.f, MAX_STRUCTURE);
 
-		size_t structAIdx = static_cast<size_t>(std::floor(structParam));
-		size_t structBIdx = static_cast<size_t>(std::ceil(structParam));
+		float modelParam = params[STRUCTURE_PARAM].getValue();
 
-		BaseModel* structA = structures[structAIdx];
-		BaseModel* structB = nullptr;
-
-		if (structAIdx != structBIdx)
-			structB = structures[structBIdx];
-		
-
-		float structCrossfade = structParam - static_cast<float>(structAIdx);
-
-		// Trigger button
-		bool trig = params[TRIG_PARAM].getValue() > 0.f;
-
-		// Trigger input
-		trigSchmitt.process(inputs[TRIG_INPUT].getVoltage(), 0.1f, 1.f);
-
-		bool gate = trig || trigSchmitt.isHigh();
-
-
-		// Set exciter params
-		// Velocity
+		// Exciter params
 		bool velocityCvConnected = inputs[VELOCITY_INPUT].isConnected();
 		float velocityCv = velocityCvConnected ? inputs[VELOCITY_INPUT].getVoltage() * 0.1f : 1.f;
 		velocityCv = mClamp(velocityCv, 0.f, 1.f);
-		exciterParams.velocity = velocityCv * params[VELOCITY_PARAM].getValue();
-		exciterParams.texture = params[EXCITER_TEXTURE_PARAM].getValue();
-		exciterParams.density = params[EXCITER_DENSITY_PARAM].getValue();
-		exciter.process(args.sampleTime, exciterParams);
-
-		if (trigBoolean.process(gate)) 
-			exciter.trigger();
-
-		float excitation = exciter.get(); //+ feedback; // Add feedback into exciter
-
+		float velocity = velocityCv * params[VELOCITY_PARAM].getValue();
+		float exciterTexture = params[EXCITER_TEXTURE_PARAM].getValue();
+		float exciterDensity = params[EXCITER_DENSITY_PARAM].getValue();
 
 		// Resonator
 		float pitch = (params[PITCH_PARAM].getValue() / 12.f) + inputs[PITCH_INPUT].getVoltage();
@@ -280,28 +270,21 @@ struct Modal : Module
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
 		sParams.timbre = mClamp(timbre, 0.f, 1.f);
 
-		if (structA != nullptr) {
-			structA->setParams(sParams);
-
-			if (structB != nullptr)
-				structB->setParams(sParams);
-		}
-
-
+		
 		// Muffle button
+		/*
 		if (muffleBoolean.process(params[MUFFLE_PARAM].getValue())) {
 			muffle ^= true;
 			muffleRamp.setTarget(muffleRamp.getValue(), muffle ? -1.f : 1.f, 1000);
 		}
-		// Unused muffle button
-		/*
+		
 		float polarity = muffle ? -1.f : 1.f;
 
 		if (!muffleRamp.isFinished())
 			polarity = muffleRamp.process();
 		*/
-
-
+		
+		/*
 		float output = 0.f;
 		for (int i = 0; i < MAX_MODES; i++)
 		{
@@ -338,10 +321,59 @@ struct Modal : Module
 
 		output *= 0.0625; // 1/16, 1/MAX MODES
 		output = std::tanh(output); // easy soft clipping
+		*/
+
+		// TODO: if all voices are taken kill the quites
+
+		bool trig = params[TRIG_PARAM].getValue() > 0.f;	// Trigger button
+		trigSchmitt.process(inputs[TRIG_INPUT].getVoltage(), 0.1f, 1.f);	// Trigger input
+
+		bool gate = trig || trigSchmitt.isHigh();
+
+		if (trigBoolean.process(gate)) {
+			// Activate new voice 
+			int voiceIdx = allocateVoice();
+
+			Voice::StaticParams p;
+			p.freq = freq;
+			p.model = modelParam;
+
+			voices[voiceIdx].setStaticParams(p);
+			voices[voiceIdx].noteOn();
+
+			latestVoiceIdx = voiceIdx;
+		}
+
+		// Set params for only the latest voice
+		Voice::DynamicParams p;
+		p.velocity = velocity;
+		p.exciterTexture = exciterTexture;
+		p.exciterDensity = exciterDensity;
+
+		p.morph = morph;
+		p.position = position;
+		p.decay = decay;
+		p.timbre = timbre;
+		voices[latestVoiceIdx].setDynamicParams(p);
+
+		float output = 0.f;
+		for (auto& voice : voices) {
+
+			//voice.setGlobalParams(p);
+
+			if (!voice.isActive())
+				continue;
+
+			output += voice.process(args.sampleTime);
+		}
+
+		// TODO: mix output and clip!
 
 		// TODO: look up coupling filter stuff
 		// Add feedback back in when body is implemented
 		//feedback = output * 0.f; //params[FEEDBACK].getValue();
+
+
 
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);

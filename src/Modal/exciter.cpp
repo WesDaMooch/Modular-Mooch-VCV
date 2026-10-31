@@ -3,16 +3,16 @@
 
 // Granular exciter
 Exciter::Exciter() {
-    setSampleRate(sr);
+    setSampleRate(sampleRate);
     buildLuts();
 
-    velocityFilter.setLowpass(sr * 0.49f); // TODO: set a good default value
+    velocityFilter.setLowpass(sampleRate * 0.49f); // TODO: set a good default value
 }
 
-void Exciter::setSampleRate(int newSampleRate) {
-    sr = std::max(newSampleRate, 1);
-    velocityFilter.setSampleRate(sr);
-    amplitudeADR.setSampleRate(sr);
+void Exciter::setSampleRate(int sampleRate) {
+    this->sampleRate = std::max(sampleRate, 1);
+    velocityFilter.setSampleRate(this->sampleRate);
+    amplitudeADR.setSampleRate(this->sampleRate);
 }
 
 void Exciter::buildLuts() {
@@ -207,7 +207,7 @@ void Exciter::process(float deltaTime, ExciterParams& p) {
 
     // Spawn grains
     //spawnPhase += deltaTime; 
-    spawnPhase += spawnRate / sr; // todo use delta time
+    spawnPhase += spawnRate / sampleRate; // todo use delta time
 
     if (spawnPhase >= 1.f)
     {

@@ -31,7 +31,7 @@ class Exciter
 public:
 	Exciter();
 	void buildLuts();
-	void setSampleRate(int newSampleRate);
+	void setSampleRate(int sampleRate);
 	void trigger();
 	void process(float deltaTime, ExciterParams& p);
 	float get();
@@ -46,7 +46,7 @@ protected:
 	std::array<Grain, MAX_CHANNELS> grain = {};
 	std::array<std::array<float, TABLE_LEN>, NUM_TABLES> table = {};
 
-	int sr = 48000;
+	int sampleRate = 48000;
 	float output = 0.f;
 
 	ADR amplitudeADR;
