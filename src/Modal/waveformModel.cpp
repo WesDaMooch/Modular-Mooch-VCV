@@ -91,9 +91,8 @@ void WaveformModel::update() {
 	// Normalise energy
 	float gain = 1.f / std::sqrt(std::max(energy, 1e-12f));
 
-	for (int i = 0; i < MAX_MODES; ++i) {
+	for (int i = 0; i < MAX_MODES; i++)
 		coefs[i].amplitude *= gain;
-	}
 }
 
 

@@ -93,6 +93,7 @@ struct Modal : Module
 		MORPH_PARAM,
 		POSITION_PARAM,
 		STRUCTURE_PARAM,
+		ATTACK_PARAM,
 		DECAY_PARAM,
 		TIMBRE_PARAM,
 		PUNCH_AMOUNT_PARAM,
@@ -115,6 +116,7 @@ struct Modal : Module
 	enum OutputId
 	{
 		AUDIO_OUTPUT,
+		DEBUG_OUTPUT,
 		OUTPUTS_LEN
 	};
 	enum LightId
@@ -127,6 +129,7 @@ struct Modal : Module
 
 	std::array<Voice, NUM_VOICES> voices;
 	int latestVoiceIdx = 0;
+	int nextVoiceIdx = 0;
 
 	dsp::BooleanTrigger trigBoolean;
 	dsp::SchmittTrigger trigSchmitt;
@@ -164,7 +167,8 @@ struct Modal : Module
 		configParam(MORPH_PARAM, 0.0f, 1.0f, 0.5f, "Morph");
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
 		configParam(STRUCTURE_PARAM, 0.f, 1.f, 0.f, "Strutcure");
-		configParam(DECAY_PARAM, 0.0f, 1.0f, 0.5f, "Decay");
+		configParam(ATTACK_PARAM, 0.f, 1.f, 0.f, "Attack");	
+		configParam(DECAY_PARAM, 0.0f, 1.0f, 0.5f, "Decay"); 
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
 		configParam(PUNCH_AMOUNT_PARAM, 0.0f, 1.0f, 0.0f, "Punch Amount");
 		configParam(PUNCH_DECAY_PARAM, 0.0f, 1.0f, 0.0f, "Punch Decay");
@@ -180,6 +184,7 @@ struct Modal : Module
 		configInput(TIMBRE_INPUT, "Timbre CV");
 		// Outputs
 		configOutput(AUDIO_OUTPUT, "Output");
+		configOutput(DEBUG_OUTPUT, "Debug");
 
 		muffleRamp.setCurrentValue(1.f);
 
@@ -216,11 +221,11 @@ struct Modal : Module
 	int allocateVoice() {
 		// Find an inactive voice
 		for (int i = 0; i < NUM_VOICES; i++) {
-			if (!voices[i].isActive())
+			if (!voices[i].isActive()) 
 				return i;
 		}
 
-		// If all voices are busy steal the quietest
+		// If all voices are busy use the quietest
 		int quietestVoice = 0;
 		float lowestLevel = voices[0].getEnvelopeLevel();
 
@@ -236,8 +241,7 @@ struct Modal : Module
 		return quietestVoice;
 	}
 	
-	void process(const ProcessArgs& args) override
-	{
+	void process(const ProcessArgs& args) override {
 
 		float modelParam = params[STRUCTURE_PARAM].getValue();
 
@@ -270,58 +274,6 @@ struct Modal : Module
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
 		sParams.timbre = mClamp(timbre, 0.f, 1.f);
 
-		
-		// Muffle button
-		/*
-		if (muffleBoolean.process(params[MUFFLE_PARAM].getValue())) {
-			muffle ^= true;
-			muffleRamp.setTarget(muffleRamp.getValue(), muffle ? -1.f : 1.f, 1000);
-		}
-		
-		float polarity = muffle ? -1.f : 1.f;
-
-		if (!muffleRamp.isFinished())
-			polarity = muffleRamp.process();
-		*/
-		
-		/*
-		float output = 0.f;
-		for (int i = 0; i < MAX_MODES; i++)
-		{
-			// Structure
-			coefs = {};
-
-			if (structA == nullptr)
-				continue;
-
-			const SvfCoefficients& structCoefsA = structA->getCoefficients(i);
-
-			if (structB != nullptr) {
-				const SvfCoefficients& structCoefsB = structB->getCoefficients(i);
-				mInterpSvfCoefs(structCrossfade, coefs, structCoefsA, structCoefsB);
-			}
-			else {
-				coefs = structCoefsA;
-			}
-			
-			// Filter bank
-			resonators[i].setCoefficients(coefs);
-			resonators[i].process(excitation);
-
-			float modeOut = resonators[i].bandpass();
-			// TODO: per mode soft clipping? tanh?
-
-			// TODO: remove
-			// use polarity patterns not just odd even
-			//if (i % 2 != 0)
-			//	modeOut *= polarity;
-
-			output += modeOut;
-		}
-
-		output *= 0.0625; // 1/16, 1/MAX MODES
-		output = std::tanh(output); // easy soft clipping
-		*/
 
 		// TODO: if all voices are taken kill the quites
 
@@ -331,39 +283,73 @@ struct Modal : Module
 		bool gate = trig || trigSchmitt.isHigh();
 
 		if (trigBoolean.process(gate)) {
-			// Activate new voice 
-			int voiceIdx = allocateVoice();
+			// Round robin voice allocation
+			int voiceIdx = -1;
+			int activeVoiceCount = 0;
 
-			Voice::StaticParams p;
-			p.freq = freq;
-			p.model = modelParam;
+			// Find inactive voice
+			for (int i = 0; i < NUM_VOICES; i++) {
 
-			voices[voiceIdx].setStaticParams(p);
+				int candidate = (nextVoiceIdx + i) % NUM_VOICES;
+
+				if (voices[candidate].isActive()) {
+					activeVoiceCount++;
+				}
+				else if (voiceIdx == -1) {
+					voiceIdx = candidate;
+				}
+			}
+
+			// If all voices are active
+			// reuse next voice
+			if (voiceIdx == -1) {
+				voiceIdx = nextVoiceIdx;
+			}
+
+			// Trigger selected voice
+			Voice::StaticParams staticParams;
+
+			staticParams.freq = freq;
+			staticParams.model = modelParam;
+			staticParams.attack = std::pow(params[ATTACK_PARAM].getValue(), 3.f);
+
+			voices[voiceIdx].setStaticParams(staticParams);
 			voices[voiceIdx].noteOn();
 
 			latestVoiceIdx = voiceIdx;
+
+			// Update the order of voices
+			for (int i = 0; i < NUM_VOICES; i++) {
+
+				if (i == voiceIdx) {
+					voices[i].voiceOrder;
+				}
+				else if (voices[i].voiceOrder >= 0) {
+					voices[i].voiceOrder++;
+				}
+			}
+
+			// Advance position
+			nextVoiceIdx = (voiceIdx + 1) % NUM_VOICES;
 		}
 
 		// Set params for only the latest voice
-		Voice::DynamicParams p;
-		p.velocity = velocity;
-		p.exciterTexture = exciterTexture;
-		p.exciterDensity = exciterDensity;
+		Voice::DynamicParams dynamicParams;
+		dynamicParams.morph = morph;
+		dynamicParams.position = position;
+		dynamicParams.decay = decay;
+		dynamicParams.timbre = timbre;
+		voices[latestVoiceIdx].setDynamicParams(dynamicParams);
 
-		p.morph = morph;
-		p.position = position;
-		p.decay = decay;
-		p.timbre = timbre;
-		voices[latestVoiceIdx].setDynamicParams(p);
+		Voice::GlobalParams globalParams;
+		globalParams.velocity = velocity;
+		globalParams.exciterTexture = exciterTexture;
+		globalParams.exciterDensity = exciterDensity;
 
 		float output = 0.f;
 		for (auto& voice : voices) {
 
-			//voice.setGlobalParams(p);
-
-			if (!voice.isActive())
-				continue;
-
+			voice.setGlobalParams(globalParams);
 			output += voice.process(args.sampleTime);
 		}
 
@@ -373,11 +359,21 @@ struct Modal : Module
 		// Add feedback back in when body is implemented
 		//feedback = output * 0.f; //params[FEEDBACK].getValue();
 
-
+		output = std::tanh(output);	// Solf clipping
 
 		output *= 10.f;	// Convert to voltage range (-10 to +10)
 		outputs[AUDIO_OUTPUT].setVoltage(output);
-		//outputs[AUDIO_OUTPUT].setVoltage(excitation);
+
+
+		// Debug
+		int activeVoices = 0;
+		for (auto& voice : voices) {
+			if (voice.isActive())
+				activeVoices += 1;
+		}
+			
+		outputs[DEBUG_OUTPUT].setVoltage(activeVoices);
+		//outputs[DEBUG_OUTPUT].setVoltage(voices[latestVoiceIdx].getEnvelopeLevel());
 	}		
 };
 
@@ -401,9 +397,10 @@ struct ModalModuleWidget : ModuleWidget
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 20.0f)), module, Modal::PITCH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 40.0f)), module, Modal::MORPH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 60.0f)), module, Modal::POSITION_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 80.0f)), module, Modal::ATTACK_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 80.0f)), module, Modal::DECAY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 80.0f)), module, Modal::STRUCTURE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 60.0f)), module, Modal::STRUCTURE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 20.0f)), module, Modal::PUNCH_AMOUNT_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 40.0f)), module, Modal::PUNCH_DECAY_PARAM));
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(30.0f, 60.0f)), module, Modal::MUFFLE_PARAM));
@@ -420,6 +417,7 @@ struct ModalModuleWidget : ModuleWidget
 		addInput(createInputCentered<BananutBlack>(mm2px(Vec(40.0f, 100.0f)), module, Modal::TIMBRE_INPUT));
 		// Ouputs
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(80.f, 100.f)), module, Modal::AUDIO_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(100.f, 100.f)), module, Modal::DEBUG_OUTPUT));
 	}
 	
 	void appendContextMenu(Menu* menu) override

@@ -5,7 +5,7 @@
 #include <cmath>
 #include "common.hpp"
 
-static constexpr int NUM_STRUCTURES = 2;
+static constexpr int NUM_STRUCTURES = 3;
 
 // TODO: clamp freq range on all models??
 

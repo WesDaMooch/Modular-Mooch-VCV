@@ -61,6 +61,8 @@ void BeamModel::setParams(const StructureParams& params) {
 
 void BeamModel::update() {
 
+	float energy = 0.f;
+
 	for (int i = 0; i < MAX_MODES; i++) {
 
 		float f = fundamentalFreq * cantBeamRoot[i];
@@ -76,8 +78,9 @@ void BeamModel::update() {
 		// Position can change after excitation, not realistic but sounds cool
 		// From Banks, Balázs et al. 2010. 'A Modal-Based Real-Time Piano Synthesizer'
 		//float positionAmplitude = std::sin(M_PI * n * position);
-		coefs[i].amplitude = 1.f; // positionAmplitude;
-
+		float a = 1.f;
+		coefs[i].amplitude = a; // positionAmplitude;
+		energy = a * a;
 
 		//float amplitude = mInterp(amplitudeXFade, amplitudeDialTable[i][amplitudeDialIdxA], amplitudeDialTable[i][amplitudeDialIdxB]);
 		//coefs[i].amplitude = amplitude * positionAmplitude;
@@ -89,6 +92,12 @@ void BeamModel::update() {
 		float q = float(M_PI) * f / loss;
 		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
 	}
+
+	// Normalise energy
+	float gain = 1.f / std::sqrt(std::max(energy, 1e-12f));
+
+	for (int i = 0; i < MAX_MODES; i++)
+		coefs[i].amplitude *= gain;
 }
 
 

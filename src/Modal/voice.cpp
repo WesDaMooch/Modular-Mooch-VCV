@@ -24,25 +24,30 @@ void Voice::setSampleRate(int sampleRate) {
 void Voice::setStaticParams(Voice::StaticParams& p) {
 	modelParams.fundamentalFreq = p.freq;
 	modelParam = mClamp(p.model, 0.f, 1.f);
+	attackTime = p.attack;
 }
 
 
 void Voice::setDynamicParams(Voice::DynamicParams& p) {
-	exciterParams.velocity = p.velocity;
-	exciterParams.texture = p.exciterTexture;
-	exciterParams.density = p.exciterDensity;
-	
 	modelParams.morph = p.morph;
 	modelParams.position = p.position;
 	modelParams.decay = p.decay;
 	modelParams.timbre = p.timbre;
 }
 
+void Voice::setGlobalParams(Voice::GlobalParams& p) {
+	exciterParams.velocity = p.velocity;
+	exciterParams.texture = p.exciterTexture;
+	exciterParams.density = p.exciterDensity;
+}
 
 bool Voice::isActive() const {
 	return active;
 }
 
+bool Voice::isStealing() const {
+	return stealVoice;
+}
 
 float Voice::getEnvelopeLevel() const {
 	return envelopeFollower;
@@ -50,19 +55,22 @@ float Voice::getEnvelopeLevel() const {
 
 
 void Voice::noteOn() {
+	
+	// If voice is already active don't retrigger
+	// the attack envelope
+	if (!active) {
+		// attackLevel = releaseLevel;
+		attackLevel = 0.f;
+	}
+
 	active = true;
 
+	stealVoice = false;
+	stealGain = 1.f;
+
+	// Reset envelope follower
 	envelopeFollower = 0.f;
 	quietTime = 0.f;
-
-	// Set excitor params if in the on trigger mode
-	//this->exciterParams.velocity = mClamp(exciterParams.velocity, 0.f, 1.f);
-	//this->exciterParams.texture = mClamp(exciterParams.texture, 0.f, 1.f);
-	//this->exciterParams.density = mClamp(exciterParams.density, 0.f, 1.f);
-
-	// Trigger excitor
-	exciter.trigger();
-
 
 	// Set models
 	const float MAX_MODEL = static_cast<float>(NUM_STRUCTURES - 1);
@@ -79,7 +87,36 @@ void Voice::noteOn() {
 
 	structCrossfade = modelValue - static_cast<float>(modelAIdx);
 
-	// Start attack env
+	// Trigger excitor
+	exciter.trigger();
+}
+
+
+void Voice::deactivate() {
+	active = false;
+	voiceOrder = -1;
+
+	// Reset envelope follower
+	envelopeFollower = 0.f;
+	quietTime = 0.f;
+
+	// Reset filters?
+	//for (auto& resonator : resonators)
+	//	resonator.reset();
+}
+
+
+// TODO: Remove
+void Voice::steal(int priority) {
+	// TODO: add steal functionality 
+	stealVoice = true;
+
+	if (priority == 1) {
+		stealTime = 0.05f; // 50 ms
+	}
+	else {
+		stealTime = 0.1f; // 100 ms
+	}
 }
 
 
@@ -126,22 +163,53 @@ float Voice::process(float sampleTime) {
 		output += modeOut;
 	}
 
-	output *= outputScaler;
-	output = std::tanh(output); // easy soft clipping pre voice
+	//if (stealActive)
+	//	stealGain *= stealDecay;
+	//output *= stealGain;
+	/*
+	if (stealVoice) {
+		stealGain *= std::exp(-sampleTime / stealTime);
+
+		if (stealGain < 0.0001f) {
+			stealGain = 0.f;
+			active = false;
+		}
+	}
+	*/
+
+	// Order gain test
+	float orderGain = 1.f;
+	if (orderGain > 0) {
+		orderGain = 1.f / orderGain;
+	}
+
+	output *= outputScaler * orderGain; //* stealGain;
+	float envelopeFollowerInput = output;
+
+	// Attack envelope
+	if (attackTime <= 0.f) {
+		attackLevel = 1.f;
+	}
+	else {
+		attackLevel += sampleTime / attackTime;
+		attackLevel = std::min(attackLevel, 1.f);
+	}
+	output *= attackLevel;
+
+	//output = std::tanh(output); // easy soft clipping pre voice
 
 	// Compute envelope follower or even:
 	// If output has been near zero (below a small threshold) for x amount of samps
 	// active = false
 	
 
-	// Envelope follower
-	float input = std::abs(output);
-
+	// Envelope follower, pre attack envelope
+	// One-pole smoothing
+	float input = std::abs(envelopeFollowerInput);
 	float time = (input > envelopeFollower) ? envelopeAttack : envelopeRelease;
 
 	time = std::max(time, 0.000001f);
 	float coeff = std::exp(-sampleTime / time);
-
 	envelopeFollower = coeff * envelopeFollower + (1.f - coeff) * input;
 
 	// Voice sleep detection
@@ -153,9 +221,7 @@ float Voice::process(float sampleTime) {
 	}
 
 	if (quietTime >= sleepTime) {
-		active = false;
-		envelopeFollower = 0.f;
-		quietTime = 0.f;
+		deactivate();
 	}
 	
 	return output;
