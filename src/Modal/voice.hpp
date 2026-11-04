@@ -13,15 +13,13 @@
 #include "stringModel.hpp"
 #include "beamModel.hpp"
 #include "chamberlinSVF.hpp"
-
+#include "../dsp/asr.hpp"
 
 constexpr static int NUM_VOICES = 4;
 
 
 class Voice {
 public:
-	int voiceOrder = -1;
-
 	struct StaticParams {
 		// Set on a new note
 		float model = 0.f;
@@ -50,15 +48,20 @@ public:
 	void setDynamicParams(DynamicParams& p);
 	void setGlobalParams(GlobalParams& p);
 
+	int getOrder();
+	void setOrder(int order);
+
 	bool isActive() const;
-	bool isStealing() const;
 	float getEnvelopeLevel() const;
 	void noteOn();
-	void steal(int priority);
 	float process(float sampleTime);
 
 protected:
 	bool active = false;
+	int voiceOrder = -1;
+
+	//
+	ASR ampEnvelope;
 
 	// Engine
 	Exciter exciter;
@@ -91,6 +94,11 @@ protected:
 	bool stealVoice = false;
 	float stealGain = 1.f;
 	float stealTime = 0.02f;
+
+	// Release
+	//bool releasing = false;
+	//float releaseTime = 0.f; 
+	//float releaseLevel = 1.f;
 
 	// Attack Envelope
 	float attackTime = 0.01f; // 10ms

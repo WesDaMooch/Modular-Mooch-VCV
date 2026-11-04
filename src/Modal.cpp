@@ -217,29 +217,7 @@ struct Modal : Module
 	{
 
 	}
-	
-	int allocateVoice() {
-		// Find an inactive voice
-		for (int i = 0; i < NUM_VOICES; i++) {
-			if (!voices[i].isActive()) 
-				return i;
-		}
 
-		// If all voices are busy use the quietest
-		int quietestVoice = 0;
-		float lowestLevel = voices[0].getEnvelopeLevel();
-
-		for (int i = 1; i < NUM_VOICES; i++) {
-			float level = voices[i].getEnvelopeLevel();
-
-			if (level < lowestLevel) {
-				lowestLevel = level;
-				quietestVoice = i;
-			}
-		}
-
-		return quietestVoice;
-	}
 	
 	void process(const ProcessArgs& args) override {
 
@@ -319,15 +297,18 @@ struct Modal : Module
 			latestVoiceIdx = voiceIdx;
 
 			// Update the order of voices
+			
 			for (int i = 0; i < NUM_VOICES; i++) {
 
 				if (i == voiceIdx) {
-					voices[i].voiceOrder;
+					voices[i].setOrder(0);
 				}
-				else if (voices[i].voiceOrder >= 0) {
-					voices[i].voiceOrder++;
+				else if (voices[i].getOrder() >= 0) {
+					voices[i].setOrder(voices[i].getOrder() + 1);
 				}
 			}
+			
+			//voices[latestVoiceIdx].setOrder(1);
 
 			// Advance position
 			nextVoiceIdx = (voiceIdx + 1) % NUM_VOICES;

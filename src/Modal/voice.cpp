@@ -41,16 +41,58 @@ void Voice::setGlobalParams(Voice::GlobalParams& p) {
 	exciterParams.density = p.exciterDensity;
 }
 
+
+
+int Voice::getOrder() {
+	return voiceOrder;
+}
+
+
+void Voice::setOrder(int order) {
+	order = mClamp(order, 0, NUM_VOICES - 1);
+
+	if (order == voiceOrder)
+		return;
+
+	voiceOrder = order;
+
+	switch (voiceOrder) {
+	case 0:
+		// Modes decay naturally for the first order voice
+		// Run attack mode and sustain forever (until note becomes inactive)
+		break;
+	case 1:
+		// 
+		ampEnvelope.setParams(attackTime, 2.f);
+		ampEnvelope.release();
+		break;
+	case 2:
+		// Start to decay to 0 in 1 secs
+		ampEnvelope.setParams(attackTime, 0.5f);
+		ampEnvelope.release();
+		break;
+	case 3:
+		// Start to decay to 0 in 0.05 secs
+		ampEnvelope.setParams(attackTime, 0.05f);
+		ampEnvelope.release();
+		break;
+	default:
+		ampEnvelope.setParams(attackTime, 0.05f);	// 50ms
+		ampEnvelope.release();
+		break;
+	}
+}
+
+
 bool Voice::isActive() const {
 	return active;
 }
 
-bool Voice::isStealing() const {
-	return stealVoice;
-}
-
+// For debug
 float Voice::getEnvelopeLevel() const {
-	return envelopeFollower;
+	//return envelopeFollower;
+	//return releaseLevel;
+	return ampEnvelope.getValue();
 }
 
 
@@ -58,15 +100,18 @@ void Voice::noteOn() {
 	
 	// If voice is already active don't retrigger
 	// the attack envelope
-	if (!active) {
+	//if (!active) {
 		// attackLevel = releaseLevel;
-		attackLevel = 0.f;
-	}
+		//attackLevel = 0.f;
+	//}
 
 	active = true;
+	ampEnvelope.setParams(attackTime, 2.f);
+	ampEnvelope.trigger();
 
-	stealVoice = false;
-	stealGain = 1.f;
+	//releaseLevel = 1.f;
+	//stealVoice = false;
+	//stealGain = 1.f;
 
 	// Reset envelope follower
 	envelopeFollower = 0.f;
@@ -96,28 +141,23 @@ void Voice::deactivate() {
 	active = false;
 	voiceOrder = -1;
 
-	// Reset envelope follower
+	ampEnvelope.reset();
+
 	envelopeFollower = 0.f;
 	quietTime = 0.f;
+
+	//releasing = false;
+	//releaseLevel = 1.f;
+
+	// Reset envelope follower
+	//envelopeFollower = 0.f;
+	//quietTime = 0.f;
 
 	// Reset filters?
 	//for (auto& resonator : resonators)
 	//	resonator.reset();
 }
 
-
-// TODO: Remove
-void Voice::steal(int priority) {
-	// TODO: add steal functionality 
-	stealVoice = true;
-
-	if (priority == 1) {
-		stealTime = 0.05f; // 50 ms
-	}
-	else {
-		stealTime = 0.1f; // 100 ms
-	}
-}
 
 
 float Voice::process(float sampleTime) {
@@ -162,31 +202,18 @@ float Voice::process(float sampleTime) {
 
 		output += modeOut;
 	}
+	
+	float envelope = ampEnvelope.process();
 
-	//if (stealActive)
-	//	stealGain *= stealDecay;
-	//output *= stealGain;
-	/*
-	if (stealVoice) {
-		stealGain *= std::exp(-sampleTime / stealTime);
-
-		if (stealGain < 0.0001f) {
-			stealGain = 0.f;
-			active = false;
-		}
-	}
-	*/
-
-	// Order gain test
-	float orderGain = 1.f;
-	if (orderGain > 0) {
-		orderGain = 1.f / orderGain;
+	if (ampEnvelope.getValue() <= 0.f) {
+		deactivate();
 	}
 
-	output *= outputScaler * orderGain; //* stealGain;
+	output *= outputScaler * envelope;
 	float envelopeFollowerInput = output;
 
 	// Attack envelope
+	/*
 	if (attackTime <= 0.f) {
 		attackLevel = 1.f;
 	}
@@ -195,6 +222,7 @@ float Voice::process(float sampleTime) {
 		attackLevel = std::min(attackLevel, 1.f);
 	}
 	output *= attackLevel;
+	*/
 
 	//output = std::tanh(output); // easy soft clipping pre voice
 
@@ -222,6 +250,7 @@ float Voice::process(float sampleTime) {
 
 	if (quietTime >= sleepTime) {
 		deactivate();
+		//active = false;
 	}
 	
 	return output;
