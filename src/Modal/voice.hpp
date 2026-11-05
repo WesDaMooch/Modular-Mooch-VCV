@@ -1,10 +1,5 @@
 // Voice.hpp
 
-// TODO:
-// Voices knows its poly index
-// After index 1 a decay env is applied, 
-// subtle at first but inreasing in speed, 
-// untill the last voice fades out very fast
 
 #pragma once
 #include "common.hpp"
@@ -12,10 +7,11 @@
 #include "waveformModel.hpp"
 #include "stringModel.hpp"
 #include "beamModel.hpp"
+#include "stmlib/dsp/filter.h"
 #include "chamberlinSVF.hpp"
 #include "../dsp/asr.hpp"
 
-constexpr static int NUM_VOICES = 4;
+constexpr static int NUM_VOICES = 6; //6
 
 
 class Voice {
@@ -64,11 +60,14 @@ protected:
 	ASR ampEnvelope;
 
 	// Engine
+	int sampleRate = 48000;
+
 	Exciter exciter;
 	ExciterParams exciterParams;
 
 	SvfCoefficients coefs;
-	std::array<ChamberlinSVF, MAX_MODES> resonators = {};
+	//std::array<ChamberlinSVF, MAX_MODES> resonators = {};
+	std::array<stmlib::Svf, MAX_MODES> resonators = {};
 
 	// Could the models not be in every voice?
 	StructureParams modelParams;
@@ -90,19 +89,8 @@ protected:
 
 	float outputScaler = 1.f / MAX_MODES;
 
-	// TODO: remove
-	bool stealVoice = false;
-	float stealGain = 1.f;
-	float stealTime = 0.02f;
-
-	// Release
-	//bool releasing = false;
-	//float releaseTime = 0.f; 
-	//float releaseLevel = 1.f;
-
 	// Attack Envelope
 	float attackTime = 0.01f; // 10ms
-	float attackLevel = 0.f;
 
 	// Envelope follower
 	constexpr static float envelopeAttack = 0.005f;	// 5ms

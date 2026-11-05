@@ -135,7 +135,7 @@ void Exciter::trigger() {
     // Pluck first grain
     grain[0].active = true;
     grain[0].phase = 0.f;
-    grain[0].speed = 1.f;
+    grain[0].speed = 1.f; 
     grain[0].texture = textureParam;
     grain[0].gain = pluckGain;
 
@@ -176,7 +176,7 @@ void Exciter::spawnGrain()
 
     const float shapeVarianceAmount = 0.05f; // 5%, 10%, 15%?
     const float playbackSpeedVarianceAmount = 0.3f;
-    const float grainSpeedTemp = 3.5f; //TODO: think I want to control from somewhere else...
+    const float grainSpeedTemp = 1.f; // 0.5f is a bit less clicky TODO: think I want to control from somewhere else...
     // Make grain speed dependant on module pitch input?
         
     // Granular bow / blow

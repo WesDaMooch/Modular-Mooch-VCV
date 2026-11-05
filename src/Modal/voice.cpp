@@ -4,20 +4,21 @@
 #include "voice.hpp"
 
 Voice::Voice() {
-	
+	for (auto& resonator : resonators)
+		resonator.Init();
 }
 
 
 void Voice::setSampleRate(int sampleRate) {
-	sampleRate = std::max(sampleRate, 1);
+	this->sampleRate = std::max(sampleRate, 1);
 	
-	exciter.setSampleRate(sampleRate);
+	exciter.setSampleRate(this->sampleRate);
 
 	for (auto* structure : structures) 
-		structure->setSamplerate(sampleRate);
+		structure->setSamplerate(this->sampleRate);
 	
-	for (auto& resonator : resonators)
-		resonator.setSamplerate(sampleRate);
+	//for (auto& resonator : resonators)
+	//	resonator.setSamplerate(sampleRate);
 }
 
 
@@ -56,24 +57,26 @@ void Voice::setOrder(int order) {
 
 	voiceOrder = order;
 
+	// Modes decay naturally for the first & second order voices
+	// Run attack mode and sustain forever (until note becomes inactive)
+	if (voiceOrder <= 1)
+		return;
+	
 	switch (voiceOrder) {
-	case 0:
-		// Modes decay naturally for the first order voice
-		// Run attack mode and sustain forever (until note becomes inactive)
-		break;
-	case 1:
-		// 
-		ampEnvelope.setParams(attackTime, 2.f);
-		ampEnvelope.release();
-		break;
 	case 2:
-		// Start to decay to 0 in 1 secs
-		ampEnvelope.setParams(attackTime, 0.5f);
+		ampEnvelope.setParams(attackTime, 2.f);	// 2s
 		ampEnvelope.release();
 		break;
 	case 3:
-		// Start to decay to 0 in 0.05 secs
-		ampEnvelope.setParams(attackTime, 0.05f);
+		ampEnvelope.setParams(attackTime, 1.f);	// 1s
+		ampEnvelope.release();
+		break;
+	case 4:
+		ampEnvelope.setParams(attackTime, 0.5f); // 500ms
+		ampEnvelope.release();
+		break;
+	case 5:
+		ampEnvelope.setParams(attackTime, 0.05f);	// 50ms
 		ampEnvelope.release();
 		break;
 	default:
@@ -91,27 +94,16 @@ bool Voice::isActive() const {
 // For debug
 float Voice::getEnvelopeLevel() const {
 	//return envelopeFollower;
-	//return releaseLevel;
 	return ampEnvelope.getValue();
 }
 
 
 void Voice::noteOn() {
 	
-	// If voice is already active don't retrigger
-	// the attack envelope
-	//if (!active) {
-		// attackLevel = releaseLevel;
-		//attackLevel = 0.f;
-	//}
-
 	active = true;
+
 	ampEnvelope.setParams(attackTime, 2.f);
 	ampEnvelope.trigger();
-
-	//releaseLevel = 1.f;
-	//stealVoice = false;
-	//stealGain = 1.f;
 
 	// Reset envelope follower
 	envelopeFollower = 0.f;
@@ -142,20 +134,9 @@ void Voice::deactivate() {
 	voiceOrder = -1;
 
 	ampEnvelope.reset();
-
+	// Reset envelope follower
 	envelopeFollower = 0.f;
 	quietTime = 0.f;
-
-	//releasing = false;
-	//releaseLevel = 1.f;
-
-	// Reset envelope follower
-	//envelopeFollower = 0.f;
-	//quietTime = 0.f;
-
-	// Reset filters?
-	//for (auto& resonator : resonators)
-	//	resonator.reset();
 }
 
 
@@ -194,10 +175,20 @@ float Voice::process(float sampleTime) {
 		}
 
 		// Filter bank
+		coefs.freq = mClamp(coefs.freq, 1.f, sampleRate * 0.5f);
+		coefs.q = std::max(coefs.q, 0.00001f); //TODO: make MIN_Q in baseModel.h common
+
+		resonators[i].set_f_q<stmlib::FREQUENCY_EXACT>(coefs.freq / sampleRate, coefs.q);
+		float modeOut = resonators[i].Process<stmlib::FILTER_MODE_BAND_PASS>(excitation);
+		modeOut *= coefs.amplitude;
+
+		/*
 		resonators[i].setCoefficients(coefs);
 		resonators[i].process(excitation);
 
 		float modeOut = resonators[i].bandpass();
+		*/
+
 		// TODO: per mode soft clipping? tanh?
 
 		output += modeOut;
@@ -212,25 +203,9 @@ float Voice::process(float sampleTime) {
 	output *= outputScaler * envelope;
 	float envelopeFollowerInput = output;
 
-	// Attack envelope
-	/*
-	if (attackTime <= 0.f) {
-		attackLevel = 1.f;
-	}
-	else {
-		attackLevel += sampleTime / attackTime;
-		attackLevel = std::min(attackLevel, 1.f);
-	}
-	output *= attackLevel;
-	*/
-
-	//output = std::tanh(output); // easy soft clipping pre voice
-
-	// Compute envelope follower or even:
-	// If output has been near zero (below a small threshold) for x amount of samps
-	// active = false
-	
-
+	// TODO: I think this is a bit overkill, 
+	// could just count the num samples under a threshold
+	// 
 	// Envelope follower, pre attack envelope
 	// One-pole smoothing
 	float input = std::abs(envelopeFollowerInput);

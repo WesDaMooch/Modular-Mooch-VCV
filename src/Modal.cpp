@@ -4,14 +4,8 @@
 #include <array>
 #include "Modal/voice.hpp"
 #include "Modal/common.hpp"
-#include "Modal/chamberlinSVF.hpp"
 #include "dsp/ramp.hpp"
 #include "Modal/exciter.hpp"
-#include "Modal/waveformModel.hpp"
-#include "Modal/stringModel.hpp"
-#include "Modal/beamModel.hpp"
-#include "Modal/rectModel.hpp"
-#include "Modal/drumModel.hpp"
 
 // Main TODOS:
 // Redo reso filters:
@@ -137,16 +131,6 @@ struct Modal : Module
 	// Old 
 	//Exciter exciter;
 	ExciterParams exciterParams;
-
-	//SvfCoefficients coefs;
-	//std::array<ChamberlinSVF, MAX_MODES> resonators = {};
-
-	//std::array<BaseModel*, NUM_STRUCTURES> structures = {};
-	//WaveformModel waveformModel;
-	//StringModel stringModel;
-	//BeamModel beamModel;
-	//RectModel rectModel;
-	//Drum2 drum;
 	StructureParams sParams;
 
 	bool muffle = false;
