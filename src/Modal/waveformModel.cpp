@@ -11,17 +11,20 @@ void WaveformModel::buildRoots() {
 	for (int i = 0; i < MAX_MODES; i++) {
 		const int n = i + 1;
 
-		// Sawtooth
-		//float sawToothPatial = 1.f / float(n);
-		waveformAmplitude[0][i] = 1.f / float(n); //(n > 1) ? -sawToothPatial : sawToothPatial; //(n % 2 == 1 ? 1.f : -1.f) / float(n); // 1.f / float(n)
+		// Saw Wave
+		updateSawPWM(1.f);
 
-		// Squarewave
-		waveformAmplitude[1][i] = (n % 2 == 1) ? 1.f / float(n) : 0.f;
+		waveformAmplitude[1][i] = 1.f / float(n); //(n > 1) ? -sawToothPatial : sawToothPatial; //(n % 2 == 1 ? 1.f : -1.f) / float(n); // 1.f / float(n)
 
+		// Square Wave
+		waveformAmplitude[2][i] = (n % 2 == 1) ? 1.f / float(n) : 0.f;
+		
+		// PWM squarewave
+		updateSquarePWM(0.5f);
 	}
 }
 
-
+// TODO: this could be remove and just filtered in Voice()
 void WaveformModel::setSamplerate(int samplerate) {
 	this->samplerate = std::max(samplerate, 1);
 	maxFreq = this->samplerate * 0.5f;
@@ -44,12 +47,30 @@ void WaveformModel::setParams(const StructureParams& params) {
 	timbre = std::pow(timbre, 2.f);
 	freqLoss = mMap(timbre, 0.f, 1000.f);
 
+	// TODO: not using the waveform stuff now
+	// Can remove it...
 	// Position //
 	// Morph between different waveform partials
 	float waveformSelect = mMap(params.position, 0.f, float(NUM_WAVEFORMS - 1));
 	waveformIdxA = static_cast<int>(std::floor(waveformSelect));
 	waveformIdxB = std::min(waveformIdxA + 1, NUM_WAVEFORMS - 1);
 	waveformXFade = waveformSelect - waveformIdxA;
+
+
+	if (waveformSelect < 1.f) {
+		// Saw PWM
+		float pwmPosition = mClamp(waveformSelect, 0.f, 1.f);
+		float duty = mMap(pwmPosition, 1.f, 0.1f);
+		updateSawPWM(duty);
+	}
+	else if (waveformSelect > 2.f) {
+		// Square PWM
+		float pwmPosition = mClamp(waveformSelect - 2.f, 0.f, 1.f);
+		float duty = mMap(pwmPosition, 0.5f, 0.999f);
+		updateSquarePWM(duty);
+	}
+
+	duty = mMap(params.position, 0.5f, 0.9999f);
 
 	prevParams = params;
 	update();
@@ -73,12 +94,22 @@ void WaveformModel::update() {
 		coefs[i].freq = f;
 
 		// Amplitude // 
+		/*
 		float waveformA = waveformAmplitude[waveformIdxA][i];
 		float wavefromB = waveformAmplitude[waveformIdxB][i];
 
-		float a = mInterp(waveformXFade, waveformA, wavefromB);
-		coefs[i].amplitude = a;
-		energy += a * a;
+		float amplitude = mInterp(waveformXFade, waveformA, wavefromB);
+
+		coefs[i].amplitude = amplitude;
+		energy += amplitude * amplitude;
+		*/
+
+		// Square wave PMW
+		float amplitude = std::fabsf(std::sinf(float(n) * M_PI * duty)) / (float(n) * std::sinf(M_PI * duty));
+
+		coefs[i].amplitude = amplitude;
+		energy += amplitude * amplitude;
+
 
 		// Decay (Q) //
 		// From Modalys
@@ -99,4 +130,32 @@ void WaveformModel::update() {
 const SvfCoefficients& WaveformModel::getCoefficients(int idx) const {
 	idx = mClamp(idx, 0, MAX_MODES - 1);
 	return coefs[idx];
+}
+
+
+// Dont like this
+void WaveformModel::updateSawPWM(float duty) {
+	for (int i = 0; i < MAX_MODES; i++) {
+		const int n = i + 1;
+
+		float w = 2.f * M_PI * float(n);
+		float wd = w * duty;
+
+		float a = 2.f * std::sin(wd) / (w * w * duty) - std::sin(wd) / w;
+		float b = 2.f * (1.f - std::cos(wd)) / (w * w * duty) + (1.f - std::cos(wd)) / w;
+
+		waveformAmplitude[0][i] = std::sqrt(a * a + b * b);
+	}
+}
+
+
+void WaveformModel::updateSquarePWM(float duty) {
+	// TODO: this is expensive, optimise
+	for (int i = 0; i < MAX_MODES; i++) {
+		const int n = i + 1;
+
+		float amplitude = std::fabsf(std::sinf(float(n) * M_PI * duty)) / (float(n) * std::sinf(M_PI * duty));
+
+		waveformAmplitude[3][i] = amplitude;
+	}
 }

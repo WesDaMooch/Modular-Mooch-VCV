@@ -9,8 +9,8 @@
 
 // Main TODOS:
 // Redo reso filters:
-// Use a biquad? the svf used in mutable instruments?
 // Direct form I or II with unity gain???
+// Modulating pos and model clicks, add slew??
 
 // Work on the exciter:
 // Find exicter shapes that dont click (slower atk & dec)
@@ -133,10 +133,12 @@ struct Modal : Module
 	ExciterParams exciterParams;
 	StructureParams sParams;
 
+	// Not used
 	bool muffle = false;
 	dsp::BooleanTrigger muffleBoolean;
 	Ramp muffleRamp;
 
+	// Not used
 	float feedback = 0.f;
 	float feedbackParam = 0.f;
 
@@ -185,8 +187,7 @@ struct Modal : Module
 
 	void onReset(const ResetEvent& e) override 
 	{
-		//for (auto& resonator : resonators)
-		//	resonator.reset();
+
 	}
 	
 
@@ -236,8 +237,6 @@ struct Modal : Module
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
 		sParams.timbre = mClamp(timbre, 0.f, 1.f);
 
-
-		// TODO: if all voices are taken kill the quites
 
 		bool trig = params[TRIG_PARAM].getValue() > 0.f;	// Trigger button
 		trigSchmitt.process(inputs[TRIG_INPUT].getVoltage(), 0.1f, 1.f);	// Trigger input
@@ -292,8 +291,6 @@ struct Modal : Module
 				}
 			}
 			
-			//voices[latestVoiceIdx].setOrder(1);
-
 			// Advance position
 			nextVoiceIdx = (voiceIdx + 1) % NUM_VOICES;
 		}

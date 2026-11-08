@@ -15,9 +15,12 @@ public:
 	const SvfCoefficients& getCoefficients(int idx) const override;
 
 protected:
-	constexpr static int NUM_WAVEFORMS = 2;
 
+
+	constexpr static int NUM_WAVEFORMS = 4;
 	std::array<std::array<float, MAX_MODES>, NUM_WAVEFORMS> waveformAmplitude = {};
+
+	float duty = 0.5f;
 
 	int samplerate = 48000;
 
@@ -36,4 +39,6 @@ protected:
 	StructureParams prevParams;
 
 	void buildRoots();
+	void updateSquarePWM(float duty);
+	void updateSawPWM(float duty);
 };

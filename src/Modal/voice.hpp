@@ -1,6 +1,10 @@
 // Voice.hpp
 
 
+// TODO: find when to update filters
+// TODO: seperate update amp, q, and freq in the structs 
+// or send bools for which ones to compute
+
 #pragma once
 #include "common.hpp"
 #include "exciter.hpp"
@@ -11,7 +15,7 @@
 #include "chamberlinSVF.hpp"
 #include "../dsp/asr.hpp"
 
-constexpr static int NUM_VOICES = 6; //6
+constexpr static int NUM_VOICES = 1; //4
 
 
 class Voice {
@@ -69,6 +73,10 @@ protected:
 	//std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 	std::array<stmlib::Svf, MAX_MODES> resonators = {};
 
+	//one-pole smoothing for filter frequency 
+	constexpr static float freqSlewTime = 0.001f; // 1 ms
+	std::array<float, MAX_MODES> freqSlew = {};	// TODO: would linear slew be better?
+
 	// Could the models not be in every voice?
 	StructureParams modelParams;
 
@@ -87,7 +95,7 @@ protected:
 	float structCrossfade = 0.f;
 	float modelParam = 0.f;
 
-	float outputScaler = 1.f / MAX_MODES;
+	float outputScaler = 1.f / (MAX_MODES * 0.5f);
 
 	// Attack Envelope
 	float attackTime = 0.01f; // 10ms

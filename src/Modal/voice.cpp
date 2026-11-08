@@ -59,24 +59,20 @@ void Voice::setOrder(int order) {
 
 	// Modes decay naturally for the first & second order voices
 	// Run attack mode and sustain forever (until note becomes inactive)
-	if (voiceOrder <= 1)
+	if (voiceOrder <= 0)
 		return;
 	
 	switch (voiceOrder) {
-	case 2:
+	case 1:
 		ampEnvelope.setParams(attackTime, 2.f);	// 2s
 		ampEnvelope.release();
 		break;
-	case 3:
+	case 2:
 		ampEnvelope.setParams(attackTime, 1.f);	// 1s
 		ampEnvelope.release();
 		break;
-	case 4:
-		ampEnvelope.setParams(attackTime, 0.5f); // 500ms
-		ampEnvelope.release();
-		break;
-	case 5:
-		ampEnvelope.setParams(attackTime, 0.05f);	// 50ms
+	case 3:
+		ampEnvelope.setParams(attackTime, 0.05f); // 50ms
 		ampEnvelope.release();
 		break;
 	default:
@@ -178,7 +174,11 @@ float Voice::process(float sampleTime) {
 		coefs.freq = mClamp(coefs.freq, 1.f, sampleRate * 0.5f);
 		coefs.q = std::max(coefs.q, 0.00001f); //TODO: make MIN_Q in baseModel.h common
 
-		resonators[i].set_f_q<stmlib::FREQUENCY_EXACT>(coefs.freq / sampleRate, coefs.q);
+		float slewCoeff = std::exp(-sampleTime / freqSlewTime);
+		freqSlew[i] = coefs.freq + slewCoeff * (freqSlew[i] - coefs.freq);
+
+		resonators[i].set_f_q<stmlib::FREQUENCY_FAST>(freqSlew[i] / sampleRate, coefs.q);  // TODO: only update when freq and q change?
+
 		float modeOut = resonators[i].Process<stmlib::FILTER_MODE_BAND_PASS>(excitation);
 		modeOut *= coefs.amplitude;
 
@@ -200,7 +200,7 @@ float Voice::process(float sampleTime) {
 		deactivate();
 	}
 
-	output *= outputScaler * envelope;
+	output *= envelope;
 	float envelopeFollowerInput = output;
 
 	// TODO: I think this is a bit overkill, 
@@ -228,5 +228,5 @@ float Voice::process(float sampleTime) {
 		//active = false;
 	}
 	
-	return output;
+	return output * outputScaler;
 }
