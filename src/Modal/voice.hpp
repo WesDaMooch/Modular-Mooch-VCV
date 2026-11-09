@@ -20,6 +20,7 @@ constexpr static int NUM_VOICES = 1; //4
 
 class Voice {
 public:
+	/*
 	struct StaticParams {
 		// Set on a new note
 		float model = 0.f;
@@ -41,12 +42,27 @@ public:
 		float exciterTexture = 0.f;
 		float exciterDensity = 0.f;
 	};
+	*/
 
 	Voice();
 	void setSampleRate(int sampleRate);
+	/*
 	void setStaticParams(StaticParams& p);
 	void setDynamicParams(DynamicParams& p);
 	void setGlobalParams(GlobalParams& p);
+	*/
+
+	void setParams(
+		float model,
+		float freq,
+		float morph,
+		float position,
+		float decay,
+		float timbre,
+		float velocity,
+		float exciterTexture,
+		float exciterDensity
+	);
 
 	int getOrder();
 	void setOrder(int order);

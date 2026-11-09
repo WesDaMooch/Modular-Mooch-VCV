@@ -219,23 +219,27 @@ struct Modal : Module
 		// Resonator
 		float pitch = (params[PITCH_PARAM].getValue() / 12.f) + inputs[PITCH_INPUT].getVoltage();
 		float freq = dsp::FREQ_C4 * dsp::exp2_taylor5(pitch);
-		sParams.fundamentalFreq = freq;
+		//sParams.fundamentalFreq = freq;
 
 		float morchCv = inputs[MORPH_INPUT].getVoltage() * 0.1f;
 		float morph = params[MORPH_PARAM].getValue() + morchCv;
-		sParams.morph = mClamp(morph, 0.f, 1.f);
+		morph = mClamp(morph, 0.f, 1.f);
+		//sParams.morph = mClamp(morph, 0.f, 1.f);
 
 		float positionCv = inputs[POSITION_INPUT].getVoltage() * 0.1f;
 		float position = params[POSITION_PARAM].getValue() + positionCv;
-		sParams.position = mClamp(position, 0.f, 1.f);
+		position = mClamp(position, 0.f, 1.f);
+		//sParams.position = mClamp(position, 0.f, 1.f);
 
 		float decayCv = inputs[DECAY_INPUT].getVoltage() * 0.1f;
 		float decay = params[DECAY_PARAM].getValue() + decayCv;
-		sParams.decay = mClamp(decay, 0.f, 1.f);
+		decay = mClamp(decay, 0.f, 1.f);
+		//sParams.decay = mClamp(decay, 0.f, 1.f);
 
 		float timbreCv = inputs[TIMBRE_INPUT].getVoltage() * 0.1f;
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
-		sParams.timbre = mClamp(timbre, 0.f, 1.f);
+		timbre = mClamp(timbre, 0.f, 1.f);
+		//sParams.timbre = mClamp(timbre, 0.f, 1.f);
 
 
 		bool trig = params[TRIG_PARAM].getValue() > 0.f;	// Trigger button
@@ -268,6 +272,7 @@ struct Modal : Module
 			}
 
 			// Trigger selected voice
+			/*
 			Voice::StaticParams staticParams;
 
 			staticParams.freq = freq;
@@ -275,6 +280,7 @@ struct Modal : Module
 			staticParams.attack = std::pow(params[ATTACK_PARAM].getValue(), 3.f);
 
 			voices[voiceIdx].setStaticParams(staticParams);
+			*/
 			voices[voiceIdx].noteOn();
 
 			latestVoiceIdx = voiceIdx;
@@ -296,6 +302,7 @@ struct Modal : Module
 		}
 
 		// Set params for only the latest voice
+		/*
 		Voice::DynamicParams dynamicParams;
 		dynamicParams.morph = morph;
 		dynamicParams.position = position;
@@ -307,11 +314,25 @@ struct Modal : Module
 		globalParams.velocity = velocity;
 		globalParams.exciterTexture = exciterTexture;
 		globalParams.exciterDensity = exciterDensity;
+		*/
+
+		// Set params
+		voices[latestVoiceIdx].setParams(
+			modelParam,
+			freq,
+			morph,
+			position,
+			decay,
+			timbre,
+			velocity,
+			exciterTexture,
+			exciterDensity
+		);
 
 		float output = 0.f;
 		for (auto& voice : voices) {
 
-			voice.setGlobalParams(globalParams);
+			//voice.setGlobalParams(globalParams);
 			output += voice.process(args.sampleTime);
 		}
 

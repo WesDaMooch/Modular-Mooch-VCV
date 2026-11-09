@@ -21,7 +21,7 @@ void Voice::setSampleRate(int sampleRate) {
 	//	resonator.setSamplerate(sampleRate);
 }
 
-
+/*
 void Voice::setStaticParams(Voice::StaticParams& p) {
 	modelParams.fundamentalFreq = p.freq;
 	modelParam = mClamp(p.model, 0.f, 1.f);
@@ -41,7 +41,30 @@ void Voice::setGlobalParams(Voice::GlobalParams& p) {
 	exciterParams.texture = p.exciterTexture;
 	exciterParams.density = p.exciterDensity;
 }
+*/
 
+void Voice::setParams(
+	float model,
+	float freq,
+	float morph,
+	float position,
+	float decay,
+	float timbre,
+	float velocity,
+	float exciterTexture,
+	float exciterDensity
+) {
+
+	modelParam = mClamp(model, 0.f, 1.f);
+	modelParams.fundamentalFreq = freq;
+	modelParams.morph = morph;
+	modelParams.position = position;
+	modelParams.decay = decay;
+	modelParams.timbre = timbre;
+	exciterParams.velocity = velocity;
+	exciterParams.texture = exciterTexture;
+	exciterParams.density = exciterDensity;
+}
 
 
 int Voice::getOrder() {
@@ -130,6 +153,7 @@ void Voice::deactivate() {
 	voiceOrder = -1;
 
 	ampEnvelope.reset();
+
 	// Reset envelope follower
 	envelopeFollower = 0.f;
 	quietTime = 0.f;
@@ -182,13 +206,6 @@ float Voice::process(float sampleTime) {
 		float modeOut = resonators[i].Process<stmlib::FILTER_MODE_BAND_PASS>(excitation);
 		modeOut *= coefs.amplitude;
 
-		/*
-		resonators[i].setCoefficients(coefs);
-		resonators[i].process(excitation);
-
-		float modeOut = resonators[i].bandpass();
-		*/
-
 		// TODO: per mode soft clipping? tanh?
 
 		output += modeOut;
@@ -196,9 +213,8 @@ float Voice::process(float sampleTime) {
 	
 	float envelope = ampEnvelope.process();
 
-	if (ampEnvelope.getValue() <= 0.f) {
+	if (ampEnvelope.getValue() <= 0.f)
 		deactivate();
-	}
 
 	output *= envelope;
 	float envelopeFollowerInput = output;
@@ -223,10 +239,8 @@ float Voice::process(float sampleTime) {
 		quietTime = 0.0f;
 	}
 
-	if (quietTime >= sleepTime) {
+	if (quietTime >= sleepTime)
 		deactivate();
-		//active = false;
-	}
 	
 	return output * outputScaler;
 }

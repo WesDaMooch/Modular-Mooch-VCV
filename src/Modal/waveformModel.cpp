@@ -47,6 +47,14 @@ void WaveformModel::setParams(const StructureParams& params) {
 	timbre = std::pow(timbre, 2.f);
 	freqLoss = mMap(timbre, 0.f, 1000.f);
 
+
+	// new filter style decay
+	baseQ = mMap(std::pow(params.decay, 3.f), MIN_Q, MAX_Q);
+
+	cutoff = 20.f * std::pow((8000.f) / 20.f, mClamp(params.timbre, 0.f, 1.f));
+
+	//cutoff = mMap(mClamp(params.timbre, 0.f, 1.f), 20.f, samplerate * 0.45f);
+
 	// TODO: not using the waveform stuff now
 	// Can remove it...
 	// Position //
@@ -111,12 +119,20 @@ void WaveformModel::update() {
 		energy += amplitude * amplitude;
 
 
+		float response = lowpassResponse(f, cutoff, FilterSlope::SLOPE_24DB);
+
+		float q = baseQ * response;
+
+		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
+
+		/*
 		// Decay (Q) //
 		// From Modalys
 		float freqRatio = f / 1000.f;
 		float loss = constLoss + freqLoss * freqRatio * freqRatio;
 		float q = float(M_PI) * f / loss;
 		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
+		*/
 	}
 
 	// Normalise energy
