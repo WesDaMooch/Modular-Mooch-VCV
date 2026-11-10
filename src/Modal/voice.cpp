@@ -54,13 +54,43 @@ void Voice::setParams(
 	float exciterTexture,
 	float exciterDensity
 ) {
-
+	// Model param
 	modelParam = mClamp(model, 0.f, 1.f);
-	modelParams.fundamentalFreq = freq;
-	modelParams.morph = morph;
-	modelParams.position = position;
-	modelParams.decay = decay;
-	modelParams.timbre = timbre;
+
+	// Model params
+	bool updateModelParams = false;
+	if (freq != modelParams.fundamentalFreq) {
+		modelParams.fundamentalFreq = freq;
+		updateModelParams = true;
+	}
+	if (morph != modelParams.morph) {
+		modelParams.morph = morph;
+		updateModelParams = true;
+	}
+	if (position != modelParams.position) {
+		modelParams.position = position;
+		updateModelParams = true;
+	}
+	if (decay != modelParams.decay) {
+		modelParams.decay = decay;
+		updateModelParams = true;
+	}
+	if (timbre != modelParams.timbre) {
+		modelParams.timbre = timbre;
+		updateModelParams = true;
+	}
+
+	if (updateModelParams) {
+		// Update model params
+		if (structA != nullptr) {
+			structA->setParams(modelParams);
+
+			if (structB != nullptr)
+				structB->setParams(modelParams);
+		}
+	}
+
+	// Exciter params
 	exciterParams.velocity = velocity;
 	exciterParams.texture = exciterTexture;
 	exciterParams.density = exciterDensity;
@@ -128,20 +158,6 @@ void Voice::noteOn() {
 	envelopeFollower = 0.f;
 	quietTime = 0.f;
 
-	// Set models
-	const float MAX_MODEL = static_cast<float>(NUM_STRUCTURES - 1);
-	float modelValue = mClamp(modelParam * MAX_MODEL, 0.f, MAX_MODEL);
-
-	size_t modelAIdx = static_cast<size_t>(std::floor(modelValue));
-	size_t modelBIdx = static_cast<size_t>(std::ceil(modelValue));
-
-	structA = structures[modelAIdx];
-	structB = nullptr;
-
-	if (modelAIdx != modelBIdx)
-		structB = structures[modelBIdx];
-
-	structCrossfade = modelValue - static_cast<float>(modelAIdx);
 
 	// Trigger excitor
 	exciter.trigger();
@@ -168,14 +184,23 @@ float Voice::process(float sampleTime) {
 	exciter.process(sampleTime, exciterParams);
 	float excitation = exciter.get(); //+ feedback; // Add feedback into exciter
 
-	// Set model params
-	if (structA != nullptr) {
-		structA->setParams(modelParams);
 
-		if (structB != nullptr)
-			structB->setParams(modelParams);
-	}
+	// Set models
+	const float MAX_MODEL = static_cast<float>(NUM_STRUCTURES - 1);
+	float modelValue = mClamp(modelParam * MAX_MODEL, 0.f, MAX_MODEL);
 
+	size_t modelAIdx = static_cast<size_t>(std::floor(modelValue));
+	size_t modelBIdx = static_cast<size_t>(std::ceil(modelValue));
+
+	structA = structures[modelAIdx];
+	structB = nullptr;
+
+	if (modelAIdx != modelBIdx)
+		structB = structures[modelBIdx];
+
+	structCrossfade = modelValue - static_cast<float>(modelAIdx);
+
+	// Compute resonators
 	float output = 0.f;
 	for (int i = 0; i < MAX_MODES; i++) {
 		// Structure
@@ -194,9 +219,14 @@ float Voice::process(float sampleTime) {
 			coefs = structCoefsA;
 		}
 
+		// Dont process resonator if its silent
+		if (coefs.amplitude == 0.f)
+			continue;
+
 		// Filter bank
-		coefs.freq = mClamp(coefs.freq, 1.f, sampleRate * 0.5f);
-		coefs.q = std::max(coefs.q, 0.00001f); //TODO: make MIN_Q in baseModel.h common
+		coefs.freq = mClamp(coefs.freq, 20.f, sampleRate * 0.45f);
+		//TODO: make MIN and MAX_Q in baseModel.h common
+		coefs.q = mClamp(coefs.q, 0.00001f, 5000.f); 
 
 		float slewCoeff = std::exp(-sampleTime / freqSlewTime);
 		freqSlew[i] = coefs.freq + slewCoeff * (freqSlew[i] - coefs.freq);
@@ -242,5 +272,5 @@ float Voice::process(float sampleTime) {
 	if (quietTime >= sleepTime)
 		deactivate();
 	
-	return output * outputScaler;
+	return output * 0.5f; //* outputScaler;
 }

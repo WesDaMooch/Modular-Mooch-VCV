@@ -20,6 +20,7 @@ void StringModel::setParams(const StructureParams& params) {
 	fundamentalFreq = mClamp(params.fundamentalFreq, minFreq, maxFreq);
 
 	// stiffness 0 = ideal string
+	/*
 	float morph = 0.f;
 	if (params.morph < 0.5f) {
 		morph = mRemap(params.morph, 0.f, 0.5f);
@@ -30,9 +31,11 @@ void StringModel::setParams(const StructureParams& params) {
 		//morph = std::pow(morph, 3.f);	// dial feel shaping
 		stiffness = mMap(morph, 0.f, 2.f);
 	}
+	*/
 
 	position = mMap(params.position, 0.02f, 0.98f);
 
+	/*
 	// TODO: needs a bit of tuning but its nice
 	float decay = 1.f - params.decay;
 	decay = std::pow(decay, 2.f);
@@ -42,16 +45,14 @@ void StringModel::setParams(const StructureParams& params) {
 	float timbre = 1.f - params.timbre;
 	timbre = std::pow(timbre, 2.f);
 	freqLoss = mMap(timbre, 0.f, 1000.f);
+	*/
 
-	// Old
-	float timbreDialPos = mMap(params.timbre, 0.f, float(DIAL_RESOLUTION - 1));
-	amplitudeDialIdxA = static_cast<int>(std::floor(timbreDialPos));
-	amplitudeDialIdxB = std::min(amplitudeDialIdxA + 1, DIAL_RESOLUTION - 1);
-	amplitudeXFade = timbreDialPos - amplitudeDialIdxA;
+	// new filter style decay
+	baseQ = mMap(std::pow(params.decay, 3.f), MIN_Q, MAX_BASE_Q);
 
-	decayDialIdxA = static_cast<int>(std::floor(timbreDialPos));
-	decayDialIdxB = std::min(decayDialIdxA + 1, DIAL_RESOLUTION - 1);
-	decayXFade = timbreDialPos - decayDialIdxA;
+	decayResponse.set(params.timbre, params.morph, DecayResponse::Mode::LOWPASS_24DB);
+	//cutoff = 20.f * std::pow((6000.f) / 20.f, mClamp(params.timbre, 0.f, 1.f));
+	//resonance = std::pow(params.morph, 3.f) * 5.f;
 
 	prevParams = params;
 	update();
@@ -71,13 +72,10 @@ void StringModel::update() {
 		//float f = fundamentalFreq * n * (1.f + (n - 1) * B);
 
 		float f = fundamentalFreq * n;
-
-		if (f < minFreq || f > maxFreq) {
-			coefs[i].amplitude = 0.f;
-			continue;
-		}
-
 		coefs[i].freq = f;
+
+		if (f < minFreq || f > maxFreq) 
+			coefs[i].amplitude = 0.f;
 
 		// Amplitude // 
 		// Position can change after excitation, not realistic but sounds cool
@@ -86,20 +84,23 @@ void StringModel::update() {
 		coefs[i].amplitude = positionAmplitude;
 		energy += positionAmplitude * positionAmplitude;
 
+		/*
 		// Decay (Q) //
 		// From Modalys
 		float freqRatio = f / 1000.f;
 		float loss = constLoss + freqLoss * freqRatio * freqRatio;
 		float q = float(M_PI) * f / loss;
 		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
+		*/
+
+		// Decay (Q) //
+		//float response = getDecayResponse(f, cutoff, resonance, ResponseMode::LOWPASS_24DB);
+		float response = decayResponse.get(f);
+		float q = baseQ * response;
+		coefs[i].q = q;
 	}
 
-	// Normalise energy
-	float gain = 1.f / std::sqrt(std::max(energy, 1e-12f));
-
-	for (int i = 0; i < MAX_MODES; ++i) {
-		coefs[i].amplitude *= gain;
-	}
+	normaliseAmplitude(coefs, energy);
 }
 
 

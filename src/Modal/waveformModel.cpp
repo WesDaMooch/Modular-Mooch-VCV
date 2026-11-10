@@ -49,9 +49,13 @@ void WaveformModel::setParams(const StructureParams& params) {
 
 
 	// new filter style decay
-	baseQ = mMap(std::pow(params.decay, 3.f), MIN_Q, MAX_Q);
+	baseQ = mMap(std::pow(params.decay, 3.f), MIN_Q, MAX_BASE_Q);
+	//cutoff = 20.f * std::pow((6000.f) / 20.f, mClamp(params.timbre, 0.f, 1.f));
+	//resonance = std::pow(params.morph, 3.f) * 5.f;
+	decayResponse.set(params.timbre, params.morph, DecayResponse::Mode::LOWPASS_24DB);
 
-	cutoff = 20.f * std::pow((8000.f) / 20.f, mClamp(params.timbre, 0.f, 1.f));
+
+	
 
 	//cutoff = mMap(mClamp(params.timbre, 0.f, 1.f), 20.f, samplerate * 0.45f);
 
@@ -93,14 +97,13 @@ void WaveformModel::update() {
 		const int n = i + 1;
 
 		float f = fundamentalFreq * n;
-
-		if (f < minFreq || f > maxFreq) {
-			coefs[i].amplitude = 0.f;
-			continue;
-		}
-
 		coefs[i].freq = f;
 
+		// TODO: add a smooth roll off to 0 amp
+		// when aproaching the freq limits
+		if (f < minFreq || f > maxFreq)
+			coefs[i].amplitude = 0.f;
+			
 		// Amplitude // 
 		/*
 		float waveformA = waveformAmplitude[waveformIdxA][i];
@@ -113,17 +116,14 @@ void WaveformModel::update() {
 		*/
 
 		// Square wave PMW
-		float amplitude = std::fabsf(std::sinf(float(n) * M_PI * duty)) / (float(n) * std::sinf(M_PI * duty));
+		float pwmAmplitude = std::fabsf(std::sinf(float(n) * M_PI * duty)) / (float(n) * std::sinf(M_PI * duty));
+		coefs[i].amplitude = pwmAmplitude;
+		energy += pwmAmplitude * pwmAmplitude;
 
-		coefs[i].amplitude = amplitude;
-		energy += amplitude * amplitude;
-
-
-		float response = lowpassResponse(f, cutoff, FilterSlope::SLOPE_24DB);
-
-		float q = baseQ * response;
-
-		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
+		// Decay (Q) //
+		//float response = getDecayResponse(f, cutoff, resonance, ResponseMode::LOWPASS_24DB);
+		float response = decayResponse.get(f);
+		coefs[i].q = baseQ * response;
 
 		/*
 		// Decay (Q) //
@@ -135,11 +135,7 @@ void WaveformModel::update() {
 		*/
 	}
 
-	// Normalise energy
-	float gain = 1.f / std::sqrt(std::max(energy, 1e-12f));
-
-	for (int i = 0; i < MAX_MODES; i++)
-		coefs[i].amplitude *= gain;
+	normaliseAmplitude(coefs, energy);
 }
 
 

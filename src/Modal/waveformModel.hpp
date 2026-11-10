@@ -37,33 +37,10 @@ protected:
 	float constLoss = 0.f;
 	float freqLoss = 0.f;
 
-	// new decay
-	float baseQ = MIN_Q;
-	float cutoff = 20.f;
-
 	std::array<SvfCoefficients, MAX_MODES> coefs = {};
 	StructureParams prevParams;
 
 	void buildRoots();
 	void updateSquarePWM(float duty);
 	void updateSawPWM(float duty);
-
-
-	enum class FilterSlope {
-		SLOPE_12DB,
-		SLOPE_24DB
-	};
-
-	// Buttworth 
-	inline float lowpassResponse(float frequency, float cutoff, FilterSlope slope) {
-		float order = (slope == FilterSlope::SLOPE_12DB) ? 1.f : 2.f;
-
-		float ratio = frequency / cutoff;
-
-		float response = 1.f / std::sqrt(
-			1.f + std::pow(ratio, 2.f * order)
-		);
-
-		return response;
-	}
 };

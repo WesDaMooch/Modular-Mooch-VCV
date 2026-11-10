@@ -20,37 +20,9 @@ constexpr static int NUM_VOICES = 1; //4
 
 class Voice {
 public:
-	/*
-	struct StaticParams {
-		// Set on a new note
-		float model = 0.f;
-		float freq = 220.f;
-		float attack = 0.01f;
-	};
-
-	struct DynamicParams {
-		// Used by the latest voice
-		float morph = 0.f;
-		float position = 0.f;
-		float decay = 0.f;
-		float timbre = 0.f;
-	};
-
-	struct GlobalParams {
-		// Used by all voices
-		float velocity = 0.f;
-		float exciterTexture = 0.f;
-		float exciterDensity = 0.f;
-	};
-	*/
 
 	Voice();
 	void setSampleRate(int sampleRate);
-	/*
-	void setStaticParams(StaticParams& p);
-	void setDynamicParams(DynamicParams& p);
-	void setGlobalParams(GlobalParams& p);
-	*/
 
 	void setParams(
 		float model,
@@ -86,7 +58,6 @@ protected:
 	ExciterParams exciterParams;
 
 	SvfCoefficients coefs;
-	//std::array<ChamberlinSVF, MAX_MODES> resonators = {};
 	std::array<stmlib::Svf, MAX_MODES> resonators = {};
 
 	//one-pole smoothing for filter frequency 
