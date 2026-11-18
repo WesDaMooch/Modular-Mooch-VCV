@@ -13,6 +13,7 @@ public:
 	void setParams(const StructureParams& params) override;
 	void update() override;
 	const SvfCoefficients& getCoefficients(int idx) const override;
+	const std::array<SvfCoefficients, MAX_MODES>& getAllCoefs() const override;
 
 protected:
 
@@ -32,10 +33,6 @@ protected:
 	int waveformIdxA = 0;
 	int waveformIdxB = 0;
 	float waveformXFade = 0.f;
-
-	// Old 
-	float constLoss = 0.f;
-	float freqLoss = 0.f;
 
 	std::array<SvfCoefficients, MAX_MODES> coefs = {};
 	StructureParams prevParams;

@@ -105,3 +105,7 @@ const SvfCoefficients& BeamModel::getCoefficients(int idx) const {
 	idx = mClamp(idx, 0, MAX_MODES - 1);
 	return coefs[idx];
 }
+
+const std::array<SvfCoefficients, MAX_MODES>& StringModel::getAllCoefs() const {
+	return coefs;
+}

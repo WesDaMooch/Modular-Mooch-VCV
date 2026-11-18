@@ -16,40 +16,16 @@ void Voice::setSampleRate(int sampleRate) {
 
 	for (auto* structure : structures) 
 		structure->setSamplerate(this->sampleRate);
-	
-	//for (auto& resonator : resonators)
-	//	resonator.setSamplerate(sampleRate);
 }
-
-/*
-void Voice::setStaticParams(Voice::StaticParams& p) {
-	modelParams.fundamentalFreq = p.freq;
-	modelParam = mClamp(p.model, 0.f, 1.f);
-	attackTime = p.attack;
-}
-
-
-void Voice::setDynamicParams(Voice::DynamicParams& p) {
-	modelParams.morph = p.morph;
-	modelParams.position = p.position;
-	modelParams.decay = p.decay;
-	modelParams.timbre = p.timbre;
-}
-
-void Voice::setGlobalParams(Voice::GlobalParams& p) {
-	exciterParams.velocity = p.velocity;
-	exciterParams.texture = p.exciterTexture;
-	exciterParams.density = p.exciterDensity;
-}
-*/
 
 void Voice::setParams(
 	float model,
 	float freq,
-	float morph,
+	float timbre,
+	float timbreMod,
+	float timbreSelect,
 	float position,
 	float decay,
-	float timbre,
 	float velocity,
 	float exciterTexture,
 	float exciterDensity
@@ -63,20 +39,12 @@ void Voice::setParams(
 		modelParams.fundamentalFreq = freq;
 		updateModelParams = true;
 	}
-	if (morph != modelParams.morph) {
-		modelParams.morph = morph;
-		updateModelParams = true;
-	}
 	if (position != modelParams.position) {
 		modelParams.position = position;
 		updateModelParams = true;
 	}
 	if (decay != modelParams.decay) {
 		modelParams.decay = decay;
-		updateModelParams = true;
-	}
-	if (timbre != modelParams.timbre) {
-		modelParams.timbre = timbre;
 		updateModelParams = true;
 	}
 
@@ -89,6 +57,32 @@ void Voice::setParams(
 				structB->setParams(modelParams);
 		}
 	}
+
+	// Timbre params
+	//DecayResponse::Type type = static_cast<DecayResponse::Type>(index);
+	//decayResponse.set(timbre, timbreMod, type);
+
+	// Timbre //
+	float timbreSelectDifference = timbreSelect - prevTimbreSelectValue;
+	int timbreSelectDelta = std::round(timbreSelectDifference / TIMBRE_SELECT_INDENT);
+
+	if (timbreSelectDelta != 0) {
+		prevTimbreSelectValue += timbreSelectDelta * TIMBRE_SELECT_INDENT;
+
+		int typeIndex = static_cast<int>(timbreType) + timbreSelectDelta;
+
+		while (typeIndex < 0)
+			typeIndex += DecayResponse::Type::NUM_TYPES;
+
+		while (typeIndex >= DecayResponse::Type::NUM_TYPES)
+			typeIndex -= DecayResponse::Type::NUM_TYPES;
+
+		timbreType = static_cast<DecayResponse::Type>(typeIndex);
+	}
+
+	this->timbre = timbre;
+	this->timbreMod = timbreMod;
+
 
 	// Exciter params
 	exciterParams.velocity = velocity;
@@ -184,7 +178,6 @@ float Voice::process(float sampleTime) {
 	exciter.process(sampleTime, exciterParams);
 	float excitation = exciter.get(); //+ feedback; // Add feedback into exciter
 
-
 	// Set models
 	const float MAX_MODEL = static_cast<float>(NUM_STRUCTURES - 1);
 	float modelValue = mClamp(modelParam * MAX_MODEL, 0.f, MAX_MODEL);
@@ -199,6 +192,15 @@ float Voice::process(float sampleTime) {
 		structB = structures[modelBIdx];
 
 	structCrossfade = modelValue - static_cast<float>(modelAIdx);
+	
+	if (structA == nullptr)
+		return 0.f;
+
+	const auto& coefsA = structA->getAllCoefs();
+	const auto& coefsB = structB->getAllCoefs();
+
+	// Set decay
+	decayResponse.set(timbre, timbreMod, timbreType, );
 
 	// Compute resonators
 	float output = 0.f;
@@ -225,9 +227,15 @@ float Voice::process(float sampleTime) {
 
 		// Filter bank
 		coefs.freq = mClamp(coefs.freq, 20.f, sampleRate * 0.45f);
-		//TODO: make MIN and MAX_Q in baseModel.h common
-		coefs.q = mClamp(coefs.q, 0.00001f, 5000.f); 
 
+		//TODO: make MIN and MAX_Q in baseModel.h common
+		float maxQ = 5000.f;
+		float minQ = 0.0001f; //0.00001
+		coefs.q = mClamp(coefs.q, minQ, maxQ); 
+
+		decayResponse.get(i);
+
+		// TODO: not sure if  slew is the best way to stop filter from clicking when changing quickly
 		float slewCoeff = std::exp(-sampleTime / freqSlewTime);
 		freqSlew[i] = coefs.freq + slewCoeff * (freqSlew[i] - coefs.freq);
 

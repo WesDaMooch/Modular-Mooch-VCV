@@ -49,10 +49,7 @@ void StringModel::setParams(const StructureParams& params) {
 
 	// new filter style decay
 	baseQ = mMap(std::pow(params.decay, 3.f), MIN_Q, MAX_BASE_Q);
-
-	decayResponse.set(params.timbre, params.morph, DecayResponse::Mode::LOWPASS_24DB);
-	//cutoff = 20.f * std::pow((6000.f) / 20.f, mClamp(params.timbre, 0.f, 1.f));
-	//resonance = std::pow(params.morph, 3.f) * 5.f;
+	//decayResponse.set(params.timbre, params.morph, DecayResponse::Type::RAMP_DESCENDING);
 
 	prevParams = params;
 	update();
@@ -94,10 +91,9 @@ void StringModel::update() {
 		*/
 
 		// Decay (Q) //
-		//float response = getDecayResponse(f, cutoff, resonance, ResponseMode::LOWPASS_24DB);
-		float response = decayResponse.get(f);
-		float q = baseQ * response;
-		coefs[i].q = q;
+		//float response = decayResponse.get(f, i);
+		//float q = baseQ * response;
+		//coefs[i].q = q;
 	}
 
 	normaliseAmplitude(coefs, energy);
@@ -107,6 +103,10 @@ void StringModel::update() {
 const SvfCoefficients& StringModel::getCoefficients(int idx) const {
 	idx = mClamp(idx, 0, MAX_MODES - 1);
 	return coefs[idx];
+}
+
+const std::array<SvfCoefficients, MAX_MODES>& StringModel::getAllCoefs() const {
+	return coefs;
 }
 
 

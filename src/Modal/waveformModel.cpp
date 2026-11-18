@@ -37,22 +37,11 @@ void WaveformModel::setParams(const StructureParams& params) {
 
 	fundamentalFreq = mClamp(params.fundamentalFreq, minFreq, maxFreq);
 
-	// TODO: needs a bit of tuning but its nice
-	float decay = 1.f - params.decay;
-	decay = std::pow(decay, 2.f);
-	constLoss = mMap(decay, 0.f, 150.f);
-
-	// TODO: low end of timbre remove high overtons?
-	float timbre = 1.f - params.timbre;
-	timbre = std::pow(timbre, 2.f);
-	freqLoss = mMap(timbre, 0.f, 1000.f);
-
-
 	// new filter style decay
 	baseQ = mMap(std::pow(params.decay, 3.f), MIN_Q, MAX_BASE_Q);
 	//cutoff = 20.f * std::pow((6000.f) / 20.f, mClamp(params.timbre, 0.f, 1.f));
 	//resonance = std::pow(params.morph, 3.f) * 5.f;
-	decayResponse.set(params.timbre, params.morph, DecayResponse::Mode::LOWPASS_24DB);
+	//decayResponse.set(params.timbre, params.morph, DecayResponse::Type::RAMP_DESCENDING);
 
 
 	
@@ -121,8 +110,7 @@ void WaveformModel::update() {
 		energy += pwmAmplitude * pwmAmplitude;
 
 		// Decay (Q) //
-		//float response = getDecayResponse(f, cutoff, resonance, ResponseMode::LOWPASS_24DB);
-		float response = decayResponse.get(f);
+		float response = decayResponse.get(f, i);
 		coefs[i].q = baseQ * response;
 
 		/*
@@ -143,6 +131,12 @@ const SvfCoefficients& WaveformModel::getCoefficients(int idx) const {
 	idx = mClamp(idx, 0, MAX_MODES - 1);
 	return coefs[idx];
 }
+
+
+const std::array<SvfCoefficients, MAX_MODES>& WaveformModel::getAllCoefs() const {
+	return coefs;
+}
+
 
 
 // Dont like this

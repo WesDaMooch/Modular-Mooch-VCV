@@ -84,12 +84,13 @@ struct Modal : Module
 		EXCITER_DENSITY_PARAM,
 		VELOCITY_PARAM,
 		PITCH_PARAM,
-		MORPH_PARAM,
 		POSITION_PARAM,
 		STRUCTURE_PARAM,
 		ATTACK_PARAM,
 		DECAY_PARAM,
 		TIMBRE_PARAM,
+		TIMBRE_MOD_PARAM,
+		TIMBRE_SELECT_PARAM,
 		PUNCH_AMOUNT_PARAM,
 		PUNCH_DECAY_PARAM,
 		MUFFLE_PARAM,
@@ -130,8 +131,8 @@ struct Modal : Module
 
 	// Old 
 	//Exciter exciter;
-	ExciterParams exciterParams;
-	StructureParams sParams;
+	//ExciterParams exciterParams;
+	//StructureParams sParams;
 
 	// Not used
 	bool muffle = false;
@@ -150,12 +151,13 @@ struct Modal : Module
 		configParam(EXCITER_DENSITY_PARAM, 0.f, 1.f, 0.f, "Exciter Density");
 		configParam(VELOCITY_PARAM, 0.f, 1.f, 0.8f, "Velocity");
 		configParam(PITCH_PARAM, -54.0f, 54.0f, 0.0f, "Pitch", " Hz", dsp::FREQ_SEMITONE, dsp::FREQ_C4);
-		configParam(MORPH_PARAM, 0.0f, 1.0f, 0.5f, "Morph");
 		configParam(POSITION_PARAM, 0.0f, 1.0f, 0.5f, "Position");
 		configParam(STRUCTURE_PARAM, 0.f, 1.f, 0.f, "Strutcure");
 		configParam(ATTACK_PARAM, 0.f, 1.f, 0.f, "Attack");	
 		configParam(DECAY_PARAM, 0.0f, 1.0f, 0.5f, "Decay"); 
 		configParam(TIMBRE_PARAM, 0.0f, 1.0f, 0.5f, "Timbre");
+		configParam(TIMBRE_MOD_PARAM, 0.0f, 1.0f, 0.5f, "Timbre Mod");
+		configParam(TIMBRE_SELECT_PARAM, -INFINITY, +INFINITY, 0.f, "Timbre Select");
 		configParam(PUNCH_AMOUNT_PARAM, 0.0f, 1.0f, 0.0f, "Punch Amount");
 		configParam(PUNCH_DECAY_PARAM, 0.0f, 1.0f, 0.0f, "Punch Decay");
 		configButton(MUFFLE_PARAM, "Muffle");
@@ -219,27 +221,33 @@ struct Modal : Module
 		// Resonator
 		float pitch = (params[PITCH_PARAM].getValue() / 12.f) + inputs[PITCH_INPUT].getVoltage();
 		float freq = dsp::FREQ_C4 * dsp::exp2_taylor5(pitch);
-		//sParams.fundamentalFreq = freq;
 
-		float morchCv = inputs[MORPH_INPUT].getVoltage() * 0.1f;
-		float morph = params[MORPH_PARAM].getValue() + morchCv;
-		morph = mClamp(morph, 0.f, 1.f);
-		//sParams.morph = mClamp(morph, 0.f, 1.f);
+
 
 		float positionCv = inputs[POSITION_INPUT].getVoltage() * 0.1f;
 		float position = params[POSITION_PARAM].getValue() + positionCv;
 		position = mClamp(position, 0.f, 1.f);
-		//sParams.position = mClamp(position, 0.f, 1.f);
 
 		float decayCv = inputs[DECAY_INPUT].getVoltage() * 0.1f;
 		float decay = params[DECAY_PARAM].getValue() + decayCv;
 		decay = mClamp(decay, 0.f, 1.f);
-		//sParams.decay = mClamp(decay, 0.f, 1.f);
+
+
+		// Timbre //
+		float timbreSelectValue = params[TIMBRE_SELECT_PARAM].getValue();
+		//float timbreSelectDifference = timbreSelectValue - prevTimbreSelectValue;
+		//int timbreSelectDelta = std::round(timbreSelectDifference / TIMBRE_SELECT_INDENT);
+
+		//if (timbreSelectDelta != 0)
+		//	prevTimbreSelectValue += timbreSelectDelta * TIMBRE_SELECT_INDENT;
 
 		float timbreCv = inputs[TIMBRE_INPUT].getVoltage() * 0.1f;
 		float timbre = params[TIMBRE_PARAM].getValue() + timbreCv;
 		timbre = mClamp(timbre, 0.f, 1.f);
-		//sParams.timbre = mClamp(timbre, 0.f, 1.f);
+
+		float timbreModCv = inputs[MORPH_INPUT].getVoltage() * 0.1f;
+		float timbreMod = params[TIMBRE_MOD_PARAM].getValue() + timbreModCv;
+		timbreMod = mClamp(timbreMod, 0.f, 1.f);
 
 
 		bool trig = params[TRIG_PARAM].getValue() > 0.f;	// Trigger button
@@ -267,26 +275,13 @@ struct Modal : Module
 
 			// If all voices are active
 			// reuse next voice
-			if (voiceIdx == -1) {
+			if (voiceIdx == -1)
 				voiceIdx = nextVoiceIdx;
-			}
 
-			// Trigger selected voice
-			/*
-			Voice::StaticParams staticParams;
-
-			staticParams.freq = freq;
-			staticParams.model = modelParam;
-			staticParams.attack = std::pow(params[ATTACK_PARAM].getValue(), 3.f);
-
-			voices[voiceIdx].setStaticParams(staticParams);
-			*/
 			voices[voiceIdx].noteOn();
-
 			latestVoiceIdx = voiceIdx;
 
 			// Update the order of voices
-			
 			for (int i = 0; i < NUM_VOICES; i++) {
 
 				if (i == voiceIdx) {
@@ -301,29 +296,15 @@ struct Modal : Module
 			nextVoiceIdx = (voiceIdx + 1) % NUM_VOICES;
 		}
 
-		// Set params for only the latest voice
-		/*
-		Voice::DynamicParams dynamicParams;
-		dynamicParams.morph = morph;
-		dynamicParams.position = position;
-		dynamicParams.decay = decay;
-		dynamicParams.timbre = timbre;
-		voices[latestVoiceIdx].setDynamicParams(dynamicParams);
-
-		Voice::GlobalParams globalParams;
-		globalParams.velocity = velocity;
-		globalParams.exciterTexture = exciterTexture;
-		globalParams.exciterDensity = exciterDensity;
-		*/
-
 		// Set params
 		voices[latestVoiceIdx].setParams(
 			modelParam,
 			freq,
-			morph,
+			timbre,
+			timbreMod,
+			timbreSelectValue,
 			position,
 			decay,
-			timbre,
 			velocity,
 			exciterTexture,
 			exciterDensity
@@ -331,8 +312,6 @@ struct Modal : Module
 
 		float output = 0.f;
 		for (auto& voice : voices) {
-
-			//voice.setGlobalParams(globalParams);
 			output += voice.process(args.sampleTime);
 		}
 
@@ -378,15 +357,17 @@ struct ModalModuleWidget : ModuleWidget
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.0f, 100.0f)), module, Modal::EXCITER_DENSITY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.0f, 40.0f)), module, Modal::VELOCITY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 20.0f)), module, Modal::PITCH_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 40.0f)), module, Modal::MORPH_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 60.0f)), module, Modal::POSITION_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 80.0f)), module, Modal::ATTACK_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.f, 40.f)), module, Modal::STRUCTURE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.f, 60.0f)), module, Modal::POSITION_PARAM));
+		//addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 80.0f)), module, Modal::ATTACK_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 80.0f)), module, Modal::DECAY_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.0f, 100.0f)), module, Modal::TIMBRE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 60.0f)), module, Modal::STRUCTURE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 20.0f)), module, Modal::PUNCH_AMOUNT_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 40.0f)), module, Modal::PUNCH_DECAY_PARAM));
-		addParam(createParamCentered<VCVButton>(mm2px(Vec(30.0f, 60.0f)), module, Modal::MUFFLE_PARAM));
+
+		addParam(createParamCentered<M1900hBlackEncoder>(mm2px(Vec(80.f, 40.f)), module, Modal::TIMBRE_SELECT_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(100.f, 20.f)), module, Modal::TIMBRE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(100.f, 40.f)), module, Modal::TIMBRE_MOD_PARAM));
+		//addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 20.0f)), module, Modal::PUNCH_AMOUNT_PARAM));
+		//addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(80.0f, 40.0f)), module, Modal::PUNCH_DECAY_PARAM));
+		//addParam(createParamCentered<VCVButton>(mm2px(Vec(30.0f, 60.0f)), module, Modal::MUFFLE_PARAM));
 
 
 		// Inputs

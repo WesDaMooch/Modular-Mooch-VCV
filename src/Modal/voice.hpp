@@ -27,13 +27,14 @@ public:
 	void setParams(
 		float model,
 		float freq,
-		float morph,
+		float timbre,
+		float timbreMod,
+		float timbreSelect,
 		float position,
 		float decay,
-		float timbre,
 		float velocity,
 		float exciterTexture,
-		float exciterDensity
+		float exciterDensity,
 	);
 
 	int getOrder();
@@ -59,6 +60,13 @@ protected:
 
 	SvfCoefficients coefs;
 	std::array<stmlib::Svf, MAX_MODES> resonators = {};
+
+	DecayResponse decayResponse;
+	DecayResponse::Type timbreType = DecayResponse::Type::LOWPASS_SECOND_ORDER;
+	static constexpr float TIMBRE_SELECT_INDENT = 1.f / 30.f;
+	float prevTimbreSelectValue = 0.f;
+	float timbre = 0.f;
+	float timbreMod = 0.f;
 
 	//one-pole smoothing for filter frequency 
 	constexpr static float freqSlewTime = 0.001f; // 1 ms

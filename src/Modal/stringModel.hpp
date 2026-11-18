@@ -13,6 +13,7 @@ public:
 	void setParams(const StructureParams& params) override;
 	void update() override;
 	const SvfCoefficients& getCoefficients(int idx) const override;
+	const std::array<SvfCoefficients, MAX_MODES>& getAllCoefs() const override;
 
 protected:
 	int samplerate = 48000;
