@@ -223,7 +223,6 @@ struct Modal : Module
 		float freq = dsp::FREQ_C4 * dsp::exp2_taylor5(pitch);
 
 
-
 		float positionCv = inputs[POSITION_INPUT].getVoltage() * 0.1f;
 		float position = params[POSITION_PARAM].getValue() + positionCv;
 		position = mClamp(position, 0.f, 1.f);

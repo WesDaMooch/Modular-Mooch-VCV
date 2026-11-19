@@ -14,13 +14,13 @@ void Voice::setSampleRate(int sampleRate) {
 	
 	exciter.setSampleRate(this->sampleRate);
 
-	for (auto* structure : structures) 
+	for (auto* structure : models) 
 		structure->setSamplerate(this->sampleRate);
 }
 
 void Voice::setParams(
 	float model,
-	float freq,
+	float pitch,
 	float timbre,
 	float timbreMod,
 	float timbreSelect,
@@ -34,33 +34,27 @@ void Voice::setParams(
 	modelParam = mClamp(model, 0.f, 1.f);
 
 	// Model params
-	bool updateModelParams = false;
-	if (freq != modelParams.fundamentalFreq) {
-		modelParams.fundamentalFreq = freq;
-		updateModelParams = true;
+	bool updateModel = false;
+	if (this->pitch != pitch) {
+		this->pitch = pitch;
+		updateModel = true;
 	}
-	if (position != modelParams.position) {
-		modelParams.position = position;
-		updateModelParams = true;
-	}
-	if (decay != modelParams.decay) {
-		modelParams.decay = decay;
-		updateModelParams = true;
+	if (this->position != position) {
+		this->position = position;
+		updateModel = true;
 	}
 
-	if (updateModelParams) {
+	if (updateModel) {
+		// TODO: set model refs here
+
 		// Update model params
-		if (structA != nullptr) {
-			structA->setParams(modelParams);
+		if (modelA != nullptr) {
+			modelA->setParams(this->pitch, this->position);
 
-			if (structB != nullptr)
-				structB->setParams(modelParams);
+			if (modelB != nullptr)
+				modelB->setParams(this->pitch, this->position);
 		}
 	}
-
-	// Timbre params
-	//DecayResponse::Type type = static_cast<DecayResponse::Type>(index);
-	//decayResponse.set(timbre, timbreMod, type);
 
 	// Timbre //
 	float timbreSelectDifference = timbreSelect - prevTimbreSelectValue;
@@ -69,13 +63,14 @@ void Voice::setParams(
 	if (timbreSelectDelta != 0) {
 		prevTimbreSelectValue += timbreSelectDelta * TIMBRE_SELECT_INDENT;
 
+		const int numTypes = static_cast<int>(DecayResponse::Type::NUM_TYPES);
 		int typeIndex = static_cast<int>(timbreType) + timbreSelectDelta;
 
 		while (typeIndex < 0)
-			typeIndex += DecayResponse::Type::NUM_TYPES;
+			typeIndex += numTypes;
 
-		while (typeIndex >= DecayResponse::Type::NUM_TYPES)
-			typeIndex -= DecayResponse::Type::NUM_TYPES;
+		while (typeIndex >= numTypes)
+			typeIndex -= numTypes;
 
 		timbreType = static_cast<DecayResponse::Type>(typeIndex);
 	}
@@ -83,6 +78,7 @@ void Voice::setParams(
 	this->timbre = timbre;
 	this->timbreMod = timbreMod;
 
+	baseQ = mMap(std::pow(decay, 3.f), 1e-4f, 1000.f);
 
 	// Exciter params
 	exciterParams.velocity = velocity;
@@ -185,64 +181,48 @@ float Voice::process(float sampleTime) {
 	size_t modelAIdx = static_cast<size_t>(std::floor(modelValue));
 	size_t modelBIdx = static_cast<size_t>(std::ceil(modelValue));
 
-	structA = structures[modelAIdx];
-	structB = nullptr;
+	modelA = models[modelAIdx];
+	modelB = nullptr;
 
 	if (modelAIdx != modelBIdx)
-		structB = structures[modelBIdx];
+		modelB = models[modelBIdx];
 
-	structCrossfade = modelValue - static_cast<float>(modelAIdx);
+	modelCrossfade = modelValue - static_cast<float>(modelAIdx);
 	
-	if (structA == nullptr)
+	if (modelA == nullptr)
 		return 0.f;
 
-	const auto& coefsA = structA->getAllCoefs();
-	const auto& coefsB = structB->getAllCoefs();
+	// Local copies
+	auto freqs = modelA->getFrequencies();
+	auto weights = modelA->getWeights();
+
+	if (modelB != nullptr) {	
+		const auto& freqsB = modelB->getFrequencies();
+		const auto& weightsB = modelB->getWeights();
+		mInterpolateArray(freqs, freqs, freqsB, modelCrossfade);
+		mInterpolateArray(weights, weights, weightsB, modelCrossfade);
+	}
 
 	// Set decay
-	decayResponse.set(timbre, timbreMod, timbreType, );
+	decayResponse.set(timbre, timbreMod, timbreType, freqs);
 
 	// Compute resonators
 	float output = 0.f;
 	for (int i = 0; i < MAX_MODES; i++) {
-		// Structure
-		coefs = {};
-
-		if (structA == nullptr)
-			continue;
-
-		const SvfCoefficients& structCoefsA = structA->getCoefficients(i);
-
-		if (structB != nullptr) {
-			const SvfCoefficients& structCoefsB = structB->getCoefficients(i);
-			mInterpSvfCoefs(structCrossfade, coefs, structCoefsA, structCoefsB);
-		}
-		else {
-			coefs = structCoefsA;
-		}
-
-		// Dont process resonator if its silent
-		if (coefs.amplitude == 0.f)
-			continue;
 
 		// Filter bank
-		coefs.freq = mClamp(coefs.freq, 20.f, sampleRate * 0.45f);
-
-		//TODO: make MIN and MAX_Q in baseModel.h common
-		float maxQ = 5000.f;
-		float minQ = 0.0001f; //0.00001
-		coefs.q = mClamp(coefs.q, minQ, maxQ); 
-
-		decayResponse.get(i);
+		float f = mClamp(freqs[i], 20.f, sampleRate * 0.45f);
 
 		// TODO: not sure if  slew is the best way to stop filter from clicking when changing quickly
 		float slewCoeff = std::exp(-sampleTime / freqSlewTime);
-		freqSlew[i] = coefs.freq + slewCoeff * (freqSlew[i] - coefs.freq);
+		freqSlew[i] = f + slewCoeff * (freqSlew[i] - f);
 
-		resonators[i].set_f_q<stmlib::FREQUENCY_FAST>(freqSlew[i] / sampleRate, coefs.q);  // TODO: only update when freq and q change?
+		float q = decayResponse.get(i) * baseQ;
+		q = mClamp(q, 1e-4f, 2000.f);
+		resonators[i].set_f_q<stmlib::FREQUENCY_FAST>(freqSlew[i] / sampleRate, q);  // TODO: only update when freq and q change?
 
 		float modeOut = resonators[i].Process<stmlib::FILTER_MODE_BAND_PASS>(excitation);
-		modeOut *= coefs.amplitude;
+		modeOut *= weights[i];
 
 		// TODO: per mode soft clipping? tanh?
 

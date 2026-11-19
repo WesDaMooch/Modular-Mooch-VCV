@@ -2,34 +2,73 @@
 
 
 DrumModel::DrumModel() {
-	update();
+	computeFrequencies();
+	computeWeights();
 }
 
 
 void DrumModel::setSamplerate(int samplerate) {
 	this->samplerate = std::max(samplerate, 1);
-	maxFreq = this->samplerate * 0.25f;
+	maxFrequency = this->samplerate * 0.25f;
 }
 
 
-void DrumModel::setParams(const StructureParams& newParams) {
-	if (newParams == prevParams)
-		return;
+void DrumModel::setParams(float pitch, float position) {
+	pitch = mClamp(pitch, 20.f, maxFrequency);
+	size = 3.f; //mMap(newParams.morph, 0.0001f, 6.f);
+	//position = position; // Map??
+	damping = 0.5f; //newParams.decay;
+	overtones = 0.5f; //newParams.timbre;
 
-	tuning = mClamp(newParams.fundamentalFreq, minFreq, maxFreq);
-	size = mMap(newParams.morph, 0.0001f, 6.f);
-	position = newParams.position;
-	damping = newParams.decay;
-	overtones = newParams.timbre;
+	if (this->pitch != pitch) {
+		this->pitch = pitch;
+		computeFrequencies();
+	}
 
-	prevParams = newParams;
-	update();
+	if (this->position != position) {
+		this->position = position;
+		computeWeights();
+	}
 }
 
 
+void DrumModel::computeFrequencies() {
+
+	for (int i = 0; i < MAX_MODES; i++) {
+		const Root& r = roots[i];
+		frequencies[i] = (r.value * pitch) / size;
+	}
+}
+
+
+void DrumModel::computeWeights() {
+
+	//float energy = 0.f;
+
+	for (int i = 0; i < MAX_MODES; i++) {
+
+		if (frequencies[i] < 20.f || frequencies[i] > maxFrequency) {
+			weights[i] = 0.f;
+			continue;
+		}
+
+		// TODO: Old, this needs a work to sort out
+		// TODO: doesnt work
+		/*
+		float weight = bessel(roots.order, roots.value * position);
+		weights[i] = scale(weight, 0.f, 1.f, overtones, 1, damping) * 100.f;
+		*/
+
+		//energy += weight * weight;
+	}
+	//normaliseWeights(weights, energy);
+}
+
+
+
+/*
 void DrumModel::update() {
-	for (size_t idx = 0; idx < MAX_MODES; idx++)
-	{
+	for (size_t idx = 0; idx < MAX_MODES; idx++) {
 		const Root& r = roots[idx];
 		float f = (r.value * tuning) / size;
 
@@ -47,12 +86,7 @@ void DrumModel::update() {
 		coefs[idx].amplitude = 1.f;
 	}
 }
-
-
-const SvfCoefficients& DrumModel::getCoefficients(int idx)  const {
-	idx = mClamp(idx, 0, MAX_MODES - 1);
-	return coefs[idx];
-}
+*/
 
 
 float DrumModel::bessel(int order, float x)

@@ -49,3 +49,15 @@ inline void mInterpSvfCoefs(float xfade, SvfCoefficients& output, const SvfCoeff
 	output.q			= mInterp(xfade, coef1.q, coef2.q);
 	output.amplitude	= mInterp(xfade, coef1.amplitude, coef2.amplitude);
 }
+
+
+template <size_t N>
+inline void mInterpolateArray(
+	std::array<float, N>& output,
+	const std::array<float, N>& a,
+	const std::array<float, N>& b,
+	float xFade) {
+
+	for (size_t i = 0; i < N; i++)
+		output[i] = a[i] + (b[i] - a[i]) * xFade;
+}

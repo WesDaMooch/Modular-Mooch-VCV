@@ -3,7 +3,9 @@
 
 BeamModel::BeamModel() {
 	buildRoots();
-	update();
+
+	computeFrequencies();
+	computeWeights();
 }
 
 void BeamModel::buildRoots() {
@@ -32,33 +34,57 @@ void BeamModel::buildRoots() {
 
 void BeamModel::setSamplerate(int samplerate) {
 	this->samplerate = std::max(samplerate, 1);
-	maxFreq = this->samplerate * 0.5f;
+	maxFrequency = this->samplerate * 0.45f;
 }
 
 
-void BeamModel::setParams(const StructureParams& params) {
-	if (params == prevParams)
-		return;
+void BeamModel::setParams(float pitch, float position) {
 
-	fundamentalFreq = mClamp(params.fundamentalFreq, minFreq, maxFreq);
+	pitch = mClamp(pitch, 20.f, maxFrequency);
+	position = mMap(position, 0.001f, 0.999f);
 
-	//position = mMap(params.position, 0.001f, 0.999f);
+	if (this->pitch != pitch) {
+		this->pitch = pitch;
+		computeFrequencies();
+	}
 
-	// TODO: needs a bit of tuning but its nice
-	float decay = 1.f - params.decay;
-	decay = std::pow(decay, 2.f);
-	constLoss = mMap(decay, 0.f, 150.f);
-
-	// TODO: low end of timbre remove high overtons?
-	float timbre = 1.f - params.timbre;
-	timbre = std::pow(timbre, 2.f);
-	freqLoss = mMap(timbre, 0.f, 1000.f);
-
-	prevParams = params;
-	update();
+	if (this->position != position) {
+		this->position = position;
+		computeWeights();
+	}
 }
 
 
+void BeamModel::computeFrequencies() {
+
+	for (int i = 0; i < MAX_MODES; i++) {
+		frequencies[i] = pitch * cantBeamRoot[i];
+	}
+}
+
+
+void BeamModel::computeWeights() {
+
+	float energy = 0.f;
+
+	for (int i = 0; i < MAX_MODES; i++) {
+
+		if (frequencies[i] < 20.f || frequencies[i] > maxFrequency) {
+			weights[i] = 0.f;
+			continue;
+		}
+
+		float weight = 1.f;
+		weights[i] = weight;
+
+		energy = weight * weight;
+
+	}
+	normaliseWeights(weights, energy);
+}
+
+
+/*
 void BeamModel::update() {
 
 	float energy = 0.f;
@@ -66,46 +92,17 @@ void BeamModel::update() {
 	for (int i = 0; i < MAX_MODES; i++) {
 
 		float f = fundamentalFreq * cantBeamRoot[i];
-
-		if (f < minFreq || f > maxFreq) {
-			coefs[i].amplitude = 0.f;
-			continue;
-		}
-
-		coefs[i].freq = f;
+		frequencies[i] = f;
 
 		// Amplitude // 
 		// Position can change after excitation, not realistic but sounds cool
 		// From Banks, Balázs et al. 2010. 'A Modal-Based Real-Time Piano Synthesizer'
 		//float positionAmplitude = std::sin(M_PI * n * position);
 		float a = 1.f;
-		coefs[i].amplitude = a; // positionAmplitude;
+		weights[i] = a;
 		energy = a * a;
 
-		//float amplitude = mInterp(amplitudeXFade, amplitudeDialTable[i][amplitudeDialIdxA], amplitudeDialTable[i][amplitudeDialIdxB]);
-		//coefs[i].amplitude = amplitude * positionAmplitude;
-
-		// Decay (Q) //
-		// From Modalys
-		float freqRatio = f / 1000.f;
-		float loss = constLoss + freqLoss * freqRatio * freqRatio;
-		float q = float(M_PI) * f / loss;
-		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
 	}
-
-	// Normalise energy
-	float gain = 1.f / std::sqrt(std::max(energy, 1e-12f));
-
-	for (int i = 0; i < MAX_MODES; i++)
-		coefs[i].amplitude *= gain;
+	normaliseWeights(weights, energy);
 }
-
-
-const SvfCoefficients& BeamModel::getCoefficients(int idx) const {
-	idx = mClamp(idx, 0, MAX_MODES - 1);
-	return coefs[idx];
-}
-
-const std::array<SvfCoefficients, MAX_MODES>& StringModel::getAllCoefs() const {
-	return coefs;
-}
+*/

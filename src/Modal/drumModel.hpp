@@ -1,19 +1,18 @@
 // Drum Model - Circular Membrane 
 
-
 #pragma once
 #include "baseModel.hpp"
-
 
 class DrumModel : public BaseModel {
 public:
 	DrumModel();
 	void setSamplerate(int samplerate) override;
-	void setParams(const StructureParams& newParams) override;
-	void update() override;
-	const SvfCoefficients& getCoefficients(int idx) const override;
+	void setParams(float pitch, float position) override;
 
 protected:
+	void computeFrequencies() override;
+	void computeWeights() override;
+
 	struct Root
 	{
 		int order;
@@ -30,13 +29,9 @@ protected:
 
 	int samplerate = 48000;
 
-	constexpr static float minFreq = 20.f;
-	float maxFreq = samplerate * 0.25f;
+	float maxFrequency = samplerate * 0.25f;
 
-	std::array<SvfCoefficients, MAX_MODES> coefs;
-	StructureParams prevParams;
-
-	float tuning = 220.f;  //pitch
+	float pitch = 220.f;  //pitch
 	float size = 1.f;   // pitch + morph
 	float position = 0.3f; // position
 	float damping = 0.f; // decay

@@ -10,34 +10,29 @@ class WaveformModel : public BaseModel {
 public:
 	WaveformModel();
 	void setSamplerate(int samplerate) override;
-	void setParams(const StructureParams& params) override;
-	void update() override;
-	const SvfCoefficients& getCoefficients(int idx) const override;
-	const std::array<SvfCoefficients, MAX_MODES>& getAllCoefs() const override;
+	void setParams(float pitch, float position) override;
+	//void update() override;
 
 protected:
+	void computeFrequencies() override;
+	void computeWeights() override;
 
+	constexpr static int NUM_WAVEFORMS = 4; // Not used
+	std::array<std::array<float, MAX_MODES>, NUM_WAVEFORMS> waveformAmplitude = {}; // Not used
 
-	constexpr static int NUM_WAVEFORMS = 4;
-	std::array<std::array<float, MAX_MODES>, NUM_WAVEFORMS> waveformAmplitude = {};
+	float position = 0.5f;
 
-	float duty = 0.5f;
-
-	// TODO: rename sampleRate
 	int samplerate = 48000;
 
-	constexpr static float minFreq = 20.f;
-	float maxFreq = samplerate * 0.5f;
+	float maxFrequency = samplerate * 0.45f;
 
-	float fundamentalFreq = 220.f;
-	int waveformIdxA = 0;
-	int waveformIdxB = 0;
-	float waveformXFade = 0.f;
+	float pitch = 220.f;
+	int waveformIdxA = 0; // Not used
+	int waveformIdxB = 0; // Not used
+	float waveformXFade = 0.f; // Not used
 
-	std::array<SvfCoefficients, MAX_MODES> coefs = {};
-	StructureParams prevParams;
 
-	void buildRoots();
-	void updateSquarePWM(float duty);
-	void updateSawPWM(float duty);
+	//void buildRoots();
+	//void updateSquarePWM(float duty);
+	//void updateSawPWM(float duty);
 };

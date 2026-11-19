@@ -26,7 +26,7 @@ public:
 
 	void setParams(
 		float model,
-		float freq,
+		float pitch,
 		float timbre,
 		float timbreMod,
 		float timbreSelect,
@@ -34,7 +34,7 @@ public:
 		float decay,
 		float velocity,
 		float exciterTexture,
-		float exciterDensity,
+		float exciterDensity
 	);
 
 	int getOrder();
@@ -46,53 +46,14 @@ public:
 	float process(float sampleTime);
 
 protected:
+	void deactivate();
+
+	// Voice //
 	bool active = false;
 	int voiceOrder = -1;
-
-	//
-	ASR ampEnvelope;
-
-	// Engine
 	int sampleRate = 48000;
 
-	Exciter exciter;
-	ExciterParams exciterParams;
-
-	SvfCoefficients coefs;
-	std::array<stmlib::Svf, MAX_MODES> resonators = {};
-
-	DecayResponse decayResponse;
-	DecayResponse::Type timbreType = DecayResponse::Type::LOWPASS_SECOND_ORDER;
-	static constexpr float TIMBRE_SELECT_INDENT = 1.f / 30.f;
-	float prevTimbreSelectValue = 0.f;
-	float timbre = 0.f;
-	float timbreMod = 0.f;
-
-	//one-pole smoothing for filter frequency 
-	constexpr static float freqSlewTime = 0.001f; // 1 ms
-	std::array<float, MAX_MODES> freqSlew = {};	// TODO: would linear slew be better?
-
-	// Could the models not be in every voice?
-	StructureParams modelParams;
-
-	WaveformModel waveformModel;
-	StringModel stringModel;
-	BeamModel beamModel;
-
-	std::array<BaseModel*, NUM_STRUCTURES> structures = {
-		&waveformModel,
-		&stringModel,
-		&beamModel
-	};
-
-	BaseModel* structA = nullptr;
-	BaseModel* structB = nullptr;
-	float structCrossfade = 0.f;
-	float modelParam = 0.f;
-
-	float outputScaler = 1.f / (MAX_MODES * 0.5f);
-
-	// Attack Envelope
+	ASR ampEnvelope;
 	float attackTime = 0.01f; // 10ms
 
 	// Envelope follower
@@ -105,7 +66,52 @@ protected:
 	float envelopeFollower = 0.f;
 	float quietTime = 0.f;
 
-	void deactivate();
+
+	// Exciter //
+	Exciter exciter;
+	ExciterParams exciterParams;
+
+
+	// Model //
+	WaveformModel waveformModel;
+	StringModel stringModel;
+	BeamModel beamModel;
+
+	std::array<BaseModel*, NUM_STRUCTURES> models = {
+		&waveformModel,
+		&stringModel,
+		&beamModel
+	};
+
+	BaseModel* modelA = nullptr;
+	BaseModel* modelB = nullptr;
+	float modelCrossfade = 0.f;
+	float modelParam = 0.f;
+	float pitch = 220.f;
+	float position = 0.5f;
+
+	//one-pole smoothing for filter frequency 
+	constexpr static float freqSlewTime = 0.001f; // 1 ms
+	std::array<float, MAX_MODES> freqSlew = {};	// TODO: would linear slew be better?
+
+
+	// Timbre //
+	DecayResponse decayResponse;
+	DecayResponse::Type timbreType = DecayResponse::Type::LOWPASS_SECOND_ORDER;
+	static constexpr float TIMBRE_SELECT_INDENT = 1.f / 30.f;
+	float prevTimbreSelectValue = 0.f;
+	float timbre = 0.f;
+	float timbreMod = 0.f;
+	float baseQ = 1.f;
+
+
+	// Resonator //
+	SvfCoefficients coefs;
+	std::array<stmlib::Svf, MAX_MODES> resonators = {};
+
+
+	// Output //
+	float outputScaler = 1.f / (MAX_MODES * 0.5f);
 };
 
 

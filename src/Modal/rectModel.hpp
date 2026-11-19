@@ -10,23 +10,17 @@
 class RectModel : public BaseModel {
 public:
 	RectModel();
-	void setSamplerate(int newSamplerate) override;
-	void setParams(const StructureParams& newParams) override;
-	void update() override;
-	const SvfCoefficients& getCoefficients(int idx) const override;
+	void setSamplerate(int samplerate) override;
+	void setParams(float pitch, float position) override;
 
 protected:
+	void computeFrequencies() override;
+	void computeWeights() override;
+
 	int samplerate = 48000;
 
-	constexpr static float minFreq = 20.f;
-	float maxFreq = samplerate * 0.5f;
+	float maxFrequency = samplerate * 0.45f;
 
-	float fundamentalFreq = 220.f;
-	float aspectRatio = 1.f;
-	float baseDecay = 0.5f;
-
-	std::array<SvfCoefficients, MAX_MODES> coefs = {};
-	StructureParams prevParams;
-
-	void buildTables();
+	float pitch = 220.f;
+	float position = 1.f; // Aspect ratio
 };

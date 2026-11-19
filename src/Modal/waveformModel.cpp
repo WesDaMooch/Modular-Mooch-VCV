@@ -2,10 +2,11 @@
 
 
 WaveformModel::WaveformModel() {
-	buildRoots();
-	update();
+	computeFrequencies();
+	computeWeights();
 }
 
+/*
 void WaveformModel::buildRoots() {
 
 	for (int i = 0; i < MAX_MODES; i++) {
@@ -23,35 +24,36 @@ void WaveformModel::buildRoots() {
 		updateSquarePWM(0.5f);
 	}
 }
+*/
 
-// TODO: this could be remove and just filtered in Voice()
+
 void WaveformModel::setSamplerate(int samplerate) {
 	this->samplerate = std::max(samplerate, 1);
-	maxFreq = this->samplerate * 0.5f;
+	maxFrequency = this->samplerate * 0.45f;
 }
 
 
-void WaveformModel::setParams(const StructureParams& params) {
-	if (params == prevParams)
-		return;
+void WaveformModel::setParams(float pitch, float position) {
 
-	fundamentalFreq = mClamp(params.fundamentalFreq, minFreq, maxFreq);
+	pitch = mClamp(pitch, 20.f, maxFrequency);
+	position = mMap(position, 0.5f, 0.9999f);
 
-	// new filter style decay
-	baseQ = mMap(std::pow(params.decay, 3.f), MIN_Q, MAX_BASE_Q);
-	//cutoff = 20.f * std::pow((6000.f) / 20.f, mClamp(params.timbre, 0.f, 1.f));
-	//resonance = std::pow(params.morph, 3.f) * 5.f;
-	//decayResponse.set(params.timbre, params.morph, DecayResponse::Type::RAMP_DESCENDING);
+	if (this->pitch != pitch) {
+		this->pitch = pitch;
+		computeFrequencies();
+	}
 
-
+	if (this->position != position) {
+		this->position = position;
+		computeWeights();
+	}
 	
-
-	//cutoff = mMap(mClamp(params.timbre, 0.f, 1.f), 20.f, samplerate * 0.45f);
 
 	// TODO: not using the waveform stuff now
 	// Can remove it...
 	// Position //
 	// Morph between different waveform partials
+	/*
 	float waveformSelect = mMap(params.position, 0.f, float(NUM_WAVEFORMS - 1));
 	waveformIdxA = static_cast<int>(std::floor(waveformSelect));
 	waveformIdxB = std::min(waveformIdxA + 1, NUM_WAVEFORMS - 1);
@@ -70,14 +72,46 @@ void WaveformModel::setParams(const StructureParams& params) {
 		float duty = mMap(pwmPosition, 0.5f, 0.999f);
 		updateSquarePWM(duty);
 	}
+	*/
 
-	duty = mMap(params.position, 0.5f, 0.9999f);
-
-	prevParams = params;
-	update();
 }
 
 
+
+
+void WaveformModel::computeFrequencies() {
+
+	for (int i = 0; i < MAX_MODES; i++) {
+		const int n = i + 1;
+
+		frequencies[i] = pitch * n;
+	}
+}
+
+
+void WaveformModel::computeWeights() {
+
+	float energy = 0.f;
+
+	for (int i = 0; i < MAX_MODES; i++) {
+
+		if (frequencies[i] < 20.f || frequencies[i] > maxFrequency) {
+			weights[i] = 0.f;
+			continue;
+		}
+
+		const int n = i + 1;
+
+		// Squarewave pulse width modulation
+		float weight = std::fabsf(std::sinf(float(n) * M_PI * position)) / (float(n) * std::sinf(M_PI * position));
+		weights[i] = weight;
+
+		energy += weight * weight;
+	}
+	normaliseWeights(weights, energy);
+}
+
+/*
 void WaveformModel::update() {
 
 	float energy = 0.f;
@@ -85,61 +119,25 @@ void WaveformModel::update() {
 	for (int i = 0; i < MAX_MODES; i++) {
 		const int n = i + 1;
 
-		float f = fundamentalFreq * n;
-		coefs[i].freq = f;
+		float f = pitch * n;
+		frequencies[i] = f;
+			
+		// Square wave PMW
+		float pwmAmplitude = std::fabsf(std::sinf(float(n) * M_PI * position)) / (float(n) * std::sinf(M_PI * position));
+		weights[i] = pwmAmplitude;
+		energy += pwmAmplitude * pwmAmplitude;
 
 		// TODO: add a smooth roll off to 0 amp
 		// when aproaching the freq limits
-		if (f < minFreq || f > maxFreq)
-			coefs[i].amplitude = 0.f;
-			
-		// Amplitude // 
-		/*
-		float waveformA = waveformAmplitude[waveformIdxA][i];
-		float wavefromB = waveformAmplitude[waveformIdxB][i];
-
-		float amplitude = mInterp(waveformXFade, waveformA, wavefromB);
-
-		coefs[i].amplitude = amplitude;
-		energy += amplitude * amplitude;
-		*/
-
-		// Square wave PMW
-		float pwmAmplitude = std::fabsf(std::sinf(float(n) * M_PI * duty)) / (float(n) * std::sinf(M_PI * duty));
-		coefs[i].amplitude = pwmAmplitude;
-		energy += pwmAmplitude * pwmAmplitude;
-
-		// Decay (Q) //
-		float response = decayResponse.get(f, i);
-		coefs[i].q = baseQ * response;
-
-		/*
-		// Decay (Q) //
-		// From Modalys
-		float freqRatio = f / 1000.f;
-		float loss = constLoss + freqLoss * freqRatio * freqRatio;
-		float q = float(M_PI) * f / loss;
-		coefs[i].q = mClamp(q, MIN_Q, MAX_Q);
-		*/
 	}
-
-	normaliseAmplitude(coefs, energy);
+	normaliseWeights(weights, energy);
 }
+*/
 
-
-const SvfCoefficients& WaveformModel::getCoefficients(int idx) const {
-	idx = mClamp(idx, 0, MAX_MODES - 1);
-	return coefs[idx];
-}
-
-
-const std::array<SvfCoefficients, MAX_MODES>& WaveformModel::getAllCoefs() const {
-	return coefs;
-}
-
-
-
-// Dont like this
+// TODO:
+// Dont like this, slowww
+// ALSO not used
+/*
 void WaveformModel::updateSawPWM(float duty) {
 	for (int i = 0; i < MAX_MODES; i++) {
 		const int n = i + 1;
@@ -165,3 +163,4 @@ void WaveformModel::updateSquarePWM(float duty) {
 		waveformAmplitude[3][i] = amplitude;
 	}
 }
+*/
