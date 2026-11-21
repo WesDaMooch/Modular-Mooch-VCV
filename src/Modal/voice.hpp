@@ -41,8 +41,8 @@ public:
 	void setOrder(int order);
 
 	bool isActive() const;
-	float getEnvelopeLevel() const;
-	void noteOn();
+	float getDebugOutput() const;
+	void noteOn(float punchAmount, float punchDecay);
 	float process(float sampleTime);
 
 protected:
@@ -83,7 +83,7 @@ protected:
 		&beamModel
 	};
 
-	BaseModel* modelA = nullptr;
+	BaseModel* modelA = models[0];
 	BaseModel* modelB = nullptr;
 	float modelCrossfade = 0.f;
 	float modelParam = 0.f;
@@ -103,6 +103,16 @@ protected:
 	float timbre = 0.f;
 	float timbreMod = 0.f;
 	float baseQ = 1.f;
+
+
+	// Punch //
+	// Max 24 semitones range - 'midi' 
+	static constexpr float SEMITONE_TO_OCTAVE = 1.f / 12.f;
+	float punchAmount = 0.f;
+	float punchEnvelope = 0.f;
+	float punchDecayCoefficient = 0.f;
+
+	// Space //
 
 
 	// Resonator //

@@ -4,6 +4,8 @@
 #include "voice.hpp"
 
 Voice::Voice() {
+	setParams(0.f, 220.f, 0.5f, 0.5f, 0.f, 0.5f, 0.5f, 1.f, 0.f, 0.f);
+
 	for (auto& resonator : resonators)
 		resonator.Init();
 }
@@ -30,31 +32,32 @@ void Voice::setParams(
 	float exciterTexture,
 	float exciterDensity
 ) {
-	// Model param
-	modelParam = mClamp(model, 0.f, 1.f);
+	// Model //
+	model = mClamp(model, 0.f, 1.f);
+
+	if (modelParam != model) {
+		const float MAX_MODEL = static_cast<float>(NUM_STRUCTURES - 1);
+
+		modelParam = model;
+		float modelValue = mClamp(modelParam * MAX_MODEL, 0.f, MAX_MODEL);
+
+		size_t modelAIdx = static_cast<size_t>(std::floor(modelValue));
+		size_t modelBIdx = static_cast<size_t>(std::ceil(modelValue));
+
+		modelA = models[modelAIdx];
+		modelB = nullptr;
+
+		if (modelAIdx != modelBIdx)
+			modelB = models[modelBIdx];
+
+		modelCrossfade = modelValue - static_cast<float>(modelAIdx);
+	}
+
 
 	// Model params
-	bool updateModel = false;
-	if (this->pitch != pitch) {
-		this->pitch = pitch;
-		updateModel = true;
-	}
-	if (this->position != position) {
-		this->position = position;
-		updateModel = true;
-	}
+	this->pitch = pitch;
+	this->position = position;
 
-	if (updateModel) {
-		// TODO: set model refs here
-
-		// Update model params
-		if (modelA != nullptr) {
-			modelA->setParams(this->pitch, this->position);
-
-			if (modelB != nullptr)
-				modelB->setParams(this->pitch, this->position);
-		}
-	}
 
 	// Timbre //
 	float timbreSelectDifference = timbreSelect - prevTimbreSelectValue;
@@ -79,6 +82,7 @@ void Voice::setParams(
 	this->timbreMod = timbreMod;
 
 	baseQ = mMap(std::pow(decay, 3.f), 1e-4f, 1000.f);
+
 
 	// Exciter params
 	exciterParams.velocity = velocity;
@@ -131,23 +135,32 @@ bool Voice::isActive() const {
 }
 
 // For debug
-float Voice::getEnvelopeLevel() const {
+float Voice::getDebugOutput() const {
 	//return envelopeFollower;
-	return ampEnvelope.getValue();
+	//return ampEnvelope.getValue();
+	return punchEnvelope * punchAmount;
 }
 
 
-void Voice::noteOn() {
+void Voice::noteOn(float punchAmount, float punchDecay) {
 	
 	active = true;
 
 	ampEnvelope.setParams(attackTime, 2.f);
 	ampEnvelope.trigger();
 
+	// Punch envelope 
+	punchAmount = mClamp(punchAmount, 0.f, 48.f);	// 24 semitone range
+	punchDecay = mClamp(punchDecay, 0.f, 2.f); //1e-4f
+
+	this->punchAmount = punchAmount;
+
+	punchEnvelope = 1.f;
+	punchDecayCoefficient = std::exp(-1.f / (punchDecay * sampleRate));
+	
 	// Reset envelope follower
 	envelopeFollower = 0.f;
 	quietTime = 0.f;
-
 
 	// Trigger excitor
 	exciter.trigger();
@@ -168,29 +181,27 @@ void Voice::deactivate() {
 
 
 float Voice::process(float sampleTime) {
-	if (!active)
+	if (!active || !modelA)
 		return 0.f;
 
 	exciter.process(sampleTime, exciterParams);
 	float excitation = exciter.get(); //+ feedback; // Add feedback into exciter
 
-	// Set models
-	const float MAX_MODEL = static_cast<float>(NUM_STRUCTURES - 1);
-	float modelValue = mClamp(modelParam * MAX_MODEL, 0.f, MAX_MODEL);
+	// Punch //
+	// TODO: Move a lot of this out of process as its slow
+	// Punch
+	float pitchOffset = punchAmount * punchEnvelope;
+	float pitchMultiplier = std::exp2(pitchOffset / 12.f);
+	float outputPitch = pitch * pitchMultiplier;
+	punchEnvelope *= punchDecayCoefficient;
 
-	size_t modelAIdx = static_cast<size_t>(std::floor(modelValue));
-	size_t modelBIdx = static_cast<size_t>(std::ceil(modelValue));
 
-	modelA = models[modelAIdx];
-	modelB = nullptr;
+	if (modelA != nullptr) {
+		modelA->setParams(outputPitch, position);
 
-	if (modelAIdx != modelBIdx)
-		modelB = models[modelBIdx];
-
-	modelCrossfade = modelValue - static_cast<float>(modelAIdx);
-	
-	if (modelA == nullptr)
-		return 0.f;
+		if (modelB != nullptr)
+			modelB->setParams(outputPitch, position);
+	}
 
 	// Local copies
 	auto freqs = modelA->getFrequencies();
@@ -214,12 +225,16 @@ float Voice::process(float sampleTime) {
 		float f = mClamp(freqs[i], 20.f, sampleRate * 0.45f);
 
 		// TODO: not sure if  slew is the best way to stop filter from clicking when changing quickly
+		// this mades no sense here? or maybe it do...
+		// Should slew be on the input pitch or here??
 		float slewCoeff = std::exp(-sampleTime / freqSlewTime);
 		freqSlew[i] = f + slewCoeff * (freqSlew[i] - f);
 
 		float q = decayResponse.get(i) * baseQ;
 		q = mClamp(q, 1e-4f, 2000.f);
+		//resonators[i].set_f_q<stmlib::FREQUENCY_FAST>(f / sampleRate, q);  // TODO: only update when freq and q change?
 		resonators[i].set_f_q<stmlib::FREQUENCY_FAST>(freqSlew[i] / sampleRate, q);  // TODO: only update when freq and q change?
+
 
 		float modeOut = resonators[i].Process<stmlib::FILTER_MODE_BAND_PASS>(excitation);
 		modeOut *= weights[i];
