@@ -1,12 +1,13 @@
-// baseModel.hpp
 
 #pragma once
 #include <array>
 #include <cmath>
 #include "common.hpp"
 
-static constexpr int NUM_STRUCTURES = 3;
 
+static constexpr int NUM_STRUCTURES = 2;
+
+// TODO: move to seperate file
 class DecayResponse {
 public:
 	enum class Type {
@@ -21,7 +22,7 @@ public:
 		// Init 
 		const float f = 220.f;
 		for (int i = 1; i < MAX_MODES; i++)
-			latestFrequenies[i] = f * (i + 1); 
+			latestFrequenies[i] = f * (i + 1);
 
 		set(cutoffParam, resonanceParam, Type::LOWPASS_SECOND_ORDER, latestFrequenies);
 	}
@@ -32,12 +33,12 @@ public:
 
 		cutoff = mClamp(cutoff, 0.f, 1.f);
 		resonance = mClamp(resonance, 0.f, 1.f);
-		
+
 		if (cutoff != this->cutoffParam || resonance != this->resonanceParam || type != this->type) {
 			this->cutoffParam = cutoff;
 			this->resonanceParam = resonance;
 			this->type = type;
-			update = true;	
+			update = true;
 		}
 
 		// TODO: check if type uses freqs
@@ -51,7 +52,7 @@ public:
 			compute(latestFrequenies);
 	}
 
-	inline float get(int modeIdx) const{
+	inline float get(int modeIdx) const {
 		modeIdx = mClamp(modeIdx, 0, MAX_MODES - 1);
 		return q[modeIdx];
 	}
@@ -66,7 +67,7 @@ protected:
 		const float maxCutoffFreq = 6000.f;	// Hz
 		cutoff = 20.f * std::pow((maxCutoffFreq) / 20.f, mClamp(cutoffParam, 0.f, 1.f));
 		resonance = std::pow(resonanceParam, 4.f);
-		
+
 
 		float filterQ = 1.f;
 
@@ -127,57 +128,81 @@ protected:
 };
 
 
-/*
-struct StructureParams {
-	float fundamentalFreq = 220.0f;
-	float morph = 0.f;
-	float position = 0.f;
-	float decay = 0.f;
-	float timbre = 0.f;
 
-	bool operator==(const StructureParams& other) const {
-		return	fundamentalFreq	== other.fundamentalFreq && 
-			morph				== other.morph &&
-			position			== other.position &&
-			decay				== other.decay &&
-			timbre				== other.timbre;
-	}
-
-	bool operator!=(const StructureParams& other) const {
-		return !(*this == other);
-	}
-};
-*/
 
 class BaseModel {
 public:
-	virtual ~BaseModel() = default;  
+    virtual ~BaseModel() = default;
 
-	virtual void setSamplerate(int samplerate) = 0;
-	//virtual void setParams(const StructureParams& newParams) = 0;
-	virtual void setParams(float pitch, float position) = 0;
+    virtual void setSamplerate(int samplerate) = 0;
+    virtual float frequency(int mode, float pitch) const = 0;
+    virtual float weight(int mode, float frequency, float position) const = 0;
+};
 
-	//virtual void update() = 0;
-	
-	inline const std::array<float, MAX_MODES>& getFrequencies() const {
-		return frequencies;
-	}
 
-	inline const std::array<float, MAX_MODES>& getWeights() const {
-		return weights;
-	}
+class StringModel : public BaseModel {
+public:
+    void setSamplerate(int samplerate) override {
+        maxFrequency = std::max(samplerate, 1) * 0.45f;
+    }
 
-protected:
-	virtual void computeFrequencies() = 0;
-	virtual void computeWeights() = 0;
+    float frequency(int mode, float pitch) const override {
+        const float f = mClamp(pitch, 20.f, maxFrequency) * float(mode + 1);
+        return f > maxFrequency ? 0.f : f;
+    }
 
-	std::array<float, MAX_MODES> frequencies{};
-	std::array<float, MAX_MODES> weights{};
+    float weight(int mode, float frequency,float position) const override {
+        const float p = mMap(position, 0.02f, 0.98f);
+        return sinf(float(M_PI) * float(mode + 1) * p);
+    }
 
-	inline void normaliseWeights(std::array<float, MAX_MODES>& w, float e) {
-		float gain = 1.f / std::sqrt(std::max(e, 1e-12f));
+private:
+    float maxFrequency = 20000.f;
+};
 
-		for (int i = 0; i < MAX_MODES; i++)
-			w[i] *= gain;
-	}
+
+class BeamModel : public BaseModel {
+public:
+    BeamModel() {
+        // From Natan Ho - Exploring Modal Synthesis
+        // Normalised frequency ratio (fk) proportional to f0
+
+        //const float freeFundamentalRoot = 1.50561873f;
+        const float cantFundamentalRoot = 0.59686416f;
+
+        for (int i = 0; i < MAX_MODES; i++) {
+            //float freeRoot = float(i) + 1.5f;
+            float cantRoot = float(i) + 0.5f;
+
+            //freeBeamRoot[i] = std::pow(freeRoot / freeFundamentalRoot, 2.f);
+            cantBeamRoot[i] = std::pow(cantRoot / cantFundamentalRoot, 2.f);
+        }
+
+        // Override the first few modes with Natan Ho roots
+        //freeBeamRoot[0] = 1.f;
+        //freeBeamRoot[1] = std::pow(2.49975267f / freeFundamentalRoot, 2.f);
+
+        cantBeamRoot[0] = 1.f;
+        cantBeamRoot[1] = std::pow(1.49417561f / cantFundamentalRoot, 2.f);
+        cantBeamRoot[2] = std::pow(2.50024695f / cantFundamentalRoot, 2.f);
+    }
+
+    void setSamplerate(int samplerate) override {
+        maxFrequency = std::max(samplerate, 1) * 0.45f;
+    }
+
+    float frequency(int mode, float pitch) const override {
+        const float f = mClamp(pitch, 20.f, maxFrequency) * cantBeamRoot[mode];
+        return f > maxFrequency ? 0.f : f;
+    }
+
+    float weight(int mode, float frequency, float position) const override {
+        // TODO: Add beam position
+        return 1.f;
+    }
+
+private:
+    float maxFrequency = 20000.f;
+    //std::array<float, MAX_MODES> freeBeamRoot = {};
+    std::array<float, MAX_MODES> cantBeamRoot = {};
 };

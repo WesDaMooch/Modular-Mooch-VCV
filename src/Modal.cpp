@@ -5,7 +5,9 @@
 #include "Modal/voice.hpp"
 #include "Modal/common.hpp"
 #include "dsp/ramp.hpp"
-#include "Modal/exciter.hpp"
+//#include "Modal/exciter.hpp"
+#include "Modal/exciter2.h" // TODO: remove when ExciterParams is removed
+
 
 // Main TODOS:
 // Redo reso filters:
@@ -174,7 +176,7 @@ struct Modal : Module
 		configOutput(AUDIO_OUTPUT, "Output");
 		configOutput(DEBUG_OUTPUT, "Debug");
 
-		muffleRamp.setCurrentValue(1.f);
+		//muffleRamp.setCurrentValue(1.f);
 
 		onSampleRateChange();
 	}
@@ -246,7 +248,7 @@ struct Modal : Module
 		float punchAmountParam = params[PUNCH_AMOUNT_PARAM].getValue();
 		float punchAmount = 48.f * punchAmountParam * punchAmountParam;
 		float punchDecayParam = params[PUNCH_DECAY_PARAM].getValue();
-		float punchDecay = 2.f * punchDecayParam * punchDecayParam * punchDecayParam ; // Cubic
+		float punchDecay = 2.f * punchDecayParam * punchDecayParam * punchDecayParam ; // Cubed
 
 		// Set params
 		voices[latestVoiceIdx].setParams(
@@ -311,9 +313,8 @@ struct Modal : Module
 
 
 		float output = 0.f;
-		for (auto& voice : voices) {
+		for (auto& voice : voices)
 			output += voice.process(args.sampleTime);
-		}
 
 		// TODO: mix output and clip!
 

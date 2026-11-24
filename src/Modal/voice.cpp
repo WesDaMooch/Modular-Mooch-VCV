@@ -4,20 +4,58 @@
 #include "voice.hpp"
 
 Voice::Voice() {
-	setParams(0.f, 220.f, 0.5f, 0.5f, 0.f, 0.5f, 0.5f, 1.f, 0.f, 0.f);
 
-	for (auto& resonator : resonators)
-		resonator.Init();
+	
+	// Theshold stuff
+	// TODO: Needs changing
+	std::mt19937 rng(12345); // Seed
+	std::uniform_real_distribution<float> jitter(-0.4f, 0.4f);
+
+	// Generate evenly distributed thresholds
+	for (int i = 0; i < MAX_MODES; i++) {
+		thresholds[i] = (float(i) + 0.5f) / float(MAX_MODES);
+	}
+
+	// Shuffle thresholds
+	std::shuffle(thresholds.begin(), thresholds.end(), rng);
+
+	// Bias higher mode indices towards earlier switching
+	for (int i = 1; i < MAX_MODES; i++) {
+		float x = float(i) / float(MAX_MODES - 1);
+
+		thresholds[i] *= (1.f - x * 0.5f);
+		thresholds[i] += jitter(rng) / float(MAX_MODES);
+
+		thresholds[i] = mClamp(thresholds[i], 0.f, 1.f);
+	}
+
+	// Fundamental switches last
+	thresholds[0] = 1.f;
+	
+
+	//setParams(0.f, 220.f, 0.5f, 0.5f, 0.f, 0.5f, 0.5f, 1.f, 0.f, 0.f);
+
+	//for (auto& resonator : resonators)
+	//	resonator.Init();
 }
 
-
 void Voice::setSampleRate(int sampleRate) {
+	/*
 	this->sampleRate = std::max(sampleRate, 1);
 	
 	exciter.setSampleRate(this->sampleRate);
 
-	for (auto* structure : models) 
-		structure->setSamplerate(this->sampleRate);
+	for (auto* model : models) 
+		model->setSamplerate(this->sampleRate);
+	*/
+
+	this->sampleRate = std::max(sampleRate, 1);
+	exciter.setSampleRate(this->sampleRate);
+
+	for (auto* model : models)
+		model->setSamplerate(this->sampleRate);
+
+	bank.setSampleRate(float(this->sampleRate));
 }
 
 void Voice::setParams(
@@ -35,6 +73,7 @@ void Voice::setParams(
 	// Model //
 	model = mClamp(model, 0.f, 1.f);
 
+	/*
 	if (modelParam != model) {
 		const float MAX_MODEL = static_cast<float>(NUM_STRUCTURES - 1);
 
@@ -52,7 +91,21 @@ void Voice::setParams(
 
 		modelCrossfade = modelValue - static_cast<float>(modelAIdx);
 	}
+	*/
 
+	if (modelParam != model) {
+		modelParam = model;
+		const float x = modelParam * float(NUM_STRUCTURES - 1);
+		const int base = int(std::floor(x));
+		const float frac = x - float(base);
+
+		for (int m = 0; m < MAX_MODES; m++) {
+			// Each mode flips to the next model at its own threshold along the dial
+			int idx = base + ((frac > thresholds[m]) ? 1 : 0);
+			idx = std::min(idx, NUM_STRUCTURES - 1);
+			bank.setModel(m, models[idx]);
+		}
+	}
 
 	// Model params
 	this->pitch = pitch;
@@ -179,8 +232,73 @@ void Voice::deactivate() {
 }
 
 
-
 float Voice::process(float sampleTime) {
+	
+	if (!active || voiceOrder < 0)
+		return 0.f;
+
+	const float excitation = exciter.process(sampleTime, exciterParams.velocity, exciterParams.texture, exciterParams.density);
+
+	const float pitchMultiplier = std::exp2(punchAmount * punchEnvelope * SEMITONE_TO_OCTAVE);
+	punchEnvelope *= punchDecayCoefficient;
+
+	bank.setParams(pitch * pitchMultiplier, position, baseQ, timbre, timbreMod, timbreType);
+	float output = bank.process(excitation);
+
+	const float envelope = ampEnvelope.process();
+	if (ampEnvelope.getValue() <= 0.f)
+		deactivate();
+
+	output *= envelope;
+
+	// 
+	float envelopeFollowerInput = output;
+
+	// TODO: I think this is a bit overkill, 
+	// could just count the num samples under a threshold
+	// 
+	// Envelope follower, pre attack envelope
+	// One-pole smoothing
+	float input = std::abs(envelopeFollowerInput);
+	float time = (input > envelopeFollower) ? envelopeAttack : envelopeRelease;
+
+	time = std::max(time, 0.000001f);
+	float coeff = std::exp(-sampleTime / time);
+	envelopeFollower = coeff * envelopeFollower + (1.f - coeff) * input;
+
+	// Voice sleep detection
+	if (envelopeFollower < sleepThreshold) {
+		quietTime += sampleTime;
+	}
+	else {
+		quietTime = 0.0f;
+	}
+
+	if (quietTime >= sleepTime)
+		deactivate();
+
+	return output * 0.5f; // outputScaler;
+
+
+
+
+	// Excitation
+	//exciter.process(sampleTime, exciterParams);
+	//float excitation = exciter.get(); //+ feedback; // Add feedback into exciter
+
+	//float excitation = exciter.process(sampleTime, exciterParams); // + feedback
+
+	// Punch
+	// TODO: Move a lot of this out of process as its slow
+	//float pitchOffset = punchAmount * punchEnvelope;
+	//float pitchMultiplier = std::exp2(pitchOffset / 12.f);
+	//float outputPitch = pitch * pitchMultiplier;
+	//punchEnvelope *= punchDecayCoefficient;
+
+	//float pitch_ = pitch;
+
+	/*
+
 	if (!active || !modelA)
 		return 0.f;
 
@@ -196,6 +314,22 @@ float Voice::process(float sampleTime) {
 	punchEnvelope *= punchDecayCoefficient;
 
 
+
+	for (auto& pair : resonatorModels) {
+		for (int i = 0; i < MAX_MODES; i++) {
+			
+			if (pair[i] != nullptr)
+				pair[i].process(i, pitch, position,
+					frequencies, weights);
+		}
+	}
+
+
+
+
+
+
+
 	if (modelA != nullptr) {
 		modelA->setParams(outputPitch, position);
 
@@ -203,13 +337,27 @@ float Voice::process(float sampleTime) {
 			modelB->setParams(outputPitch, position);
 	}
 
+
+	// Local copies
+	auto freqsA = modelA->getFrequencies();
+	auto weightsA = modelA->getWeights();
+	auto freqsB = freqsA;
+	auto weightsB = weightsA;
+
+
+	if (modelB != nullptr) {
+		freqsB = modelB->getFrequencies();
+		weightsB = modelB->getWeights();
+	}
+
+	
 	// Local copies
 	auto freqs = modelA->getFrequencies();
 	auto weights = modelA->getWeights();
 
 	if (modelB != nullptr) {	
-		const auto& freqsB = modelB->getFrequencies();
-		const auto& weightsB = modelB->getWeights();
+		freqsB = modelB->getFrequencies();
+		weightsB = modelB->getWeights();
 		mInterpolateArray(freqs, freqs, freqsB, modelCrossfade);
 		mInterpolateArray(weights, weights, weightsB, modelCrossfade);
 	}
@@ -220,13 +368,13 @@ float Voice::process(float sampleTime) {
 	// Compute resonators
 	float output = 0.f;
 	for (int i = 0; i < MAX_MODES; i++) {
-
 		// Filter bank
 		float f = mClamp(freqs[i], 20.f, sampleRate * 0.45f);
 
 		// TODO: not sure if  slew is the best way to stop filter from clicking when changing quickly
 		// this mades no sense here? or maybe it do...
 		// Should slew be on the input pitch or here??
+		// Seems to be doing a good job of de-clicking when freq changes fast
 		float slewCoeff = std::exp(-sampleTime / freqSlewTime);
 		freqSlew[i] = f + slewCoeff * (freqSlew[i] - f);
 
@@ -243,6 +391,7 @@ float Voice::process(float sampleTime) {
 
 		output += modeOut;
 	}
+	
 	
 	float envelope = ampEnvelope.process();
 
@@ -275,5 +424,6 @@ float Voice::process(float sampleTime) {
 	if (quietTime >= sleepTime)
 		deactivate();
 	
-	return output * 0.5f; //* outputScaler;
+	return output * 0.5f; // outputScaler;
+	*/
 }

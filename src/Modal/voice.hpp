@@ -7,22 +7,26 @@
 
 #pragma once
 #include "common.hpp"
-#include "exciter.hpp"
-#include "waveformModel.hpp"
-#include "stringModel.hpp"
-#include "beamModel.hpp"
-#include "stmlib/dsp/filter.h"
-#include "chamberlinSVF.hpp"
+//#include "exciter.hpp"
+#include "exciter2.h"
+//#include "waveformModel.hpp"
+//#include "stringModel.hpp"
+//#include "beamModel.hpp"
+#include "models.h" // Todo model.h
+//#include "stmlib/dsp/filter.h"
+//#include "chamberlinSVF.hpp"
 #include "../dsp/asr.hpp"
+#include "resonatorBank.h"
 
 constexpr static int NUM_VOICES = 1; //4
-
 
 class Voice {
 public:
 
 	Voice();
 	void setSampleRate(int sampleRate);
+
+	//void init(float sampleRate, float fadeSeconds = 0.02f);
 
 	void setParams(
 		float model,
@@ -48,15 +52,28 @@ public:
 protected:
 	void deactivate();
 
-	// Voice //
+	// Voice //	
 	bool active = false;
 	int voiceOrder = -1;
 	int sampleRate = 48000;
 
+	// TODO: is this used?
 	ASR ampEnvelope;
 	float attackTime = 0.01f; // 10ms
 
-	// Envelope follower
+
+	// Params
+	float modelParam = -1.f;          
+	float pitch = 220.f;
+	float position = 0.5f;
+	float timbre = 0.f;
+	float timbreMod = 0.f;
+	float baseQ = 1.f;
+
+	static constexpr float TIMBRE_SELECT_INDENT = 1.f / 30.f;
+	float prevTimbreSelectValue = 0.f;
+
+	// Envelope follower //
 	constexpr static float envelopeAttack = 0.005f;	// 5ms
 	constexpr static float envelopeRelease = 0.03f;	// 50ms
 
@@ -66,19 +83,50 @@ protected:
 	float envelopeFollower = 0.f;
 	float quietTime = 0.f;
 
-
 	// Exciter //
 	Exciter exciter;
 	ExciterParams exciterParams;
 
+	// Timbre
+	DecayResponse::Type timbreType = DecayResponse::Type::LOWPASS_SECOND_ORDER;
+
+	// Models //
+	//WaveformModel waveformModel;
+	StringModel stringModel;
+	BeamModel beamModel;
+
+	std::array<BaseModel*, NUM_STRUCTURES> models = {
+		//&waveformModel,
+		&stringModel,
+		&beamModel
+	};
+
+	std::array<float, MAX_MODES> thresholds = {};
+
+
+	// Resonators //
+	ResonatorBank bank;
+
+	// Punch //
+	// Max 24 semitones range - 'midi' 
+	static constexpr float SEMITONE_TO_OCTAVE = 1.f / 12.f;
+	float punchAmount = 0.f;
+	float punchEnvelope = 0.f;
+	float punchDecayCoefficient = 0.f;
+
+	// Output //
+	//float outputScaler = 1.f / (MAX_MODES * 0.5f);
+
+
 
 	// Model //
+	/*
 	WaveformModel waveformModel;
 	StringModel stringModel;
 	BeamModel beamModel;
 
 	std::array<BaseModel*, NUM_STRUCTURES> models = {
-		&waveformModel,
+		//&waveformModel,
 		&stringModel,
 		&beamModel
 	};
@@ -89,6 +137,8 @@ protected:
 	float modelParam = 0.f;
 	float pitch = 220.f;
 	float position = 0.5f;
+
+	std::array<float, MAX_MODES> thresholds = {};
 
 	//one-pole smoothing for filter frequency 
 	constexpr static float freqSlewTime = 0.001f; // 1 ms
@@ -117,11 +167,15 @@ protected:
 
 	// Resonator //
 	SvfCoefficients coefs;
-	std::array<stmlib::Svf, MAX_MODES> resonators = {};
-
+	//std::array<stmlib::Svf, MAX_MODES> resonators = {};
+	std::array<std::array<stmlib::Svf, 2>, MAX_MODES> resonators = {}; // Dual resonators
+	std::array<std::array<BaseModel*, 2>, MAX_MODES> resonatorModels = {};
+	std::array<float, MAX_MODES> frequencies = {};
+	std::array<float, MAX_MODES> weights = {};
 
 	// Output //
 	float outputScaler = 1.f / (MAX_MODES * 0.5f);
+	*/
 };
 
 
