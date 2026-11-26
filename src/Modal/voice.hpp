@@ -73,12 +73,12 @@ protected:
 
 
 	// Model //
-	WaveformModel waveformModel;
+	//WaveformModel waveformModel;
 	StringModel stringModel;
 	BeamModel beamModel;
 
 	std::array<BaseModel*, NUM_STRUCTURES> models = {
-		&waveformModel,
+		//&waveformModel,
 		&stringModel,
 		&beamModel
 	};

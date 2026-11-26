@@ -63,7 +63,7 @@ void StringModel::computeWeights() {
 
 		energy += weight * weight;
 	}
-	normaliseWeights(weights, energy);
+	//normaliseWeights(weights, energy);
 }
 
 /*
